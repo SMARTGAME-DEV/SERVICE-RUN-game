@@ -1,0 +1,12 @@
+SERVICE RUN game - PWA
+
+1) Il file game.html è una copia IDENTICA del file HTML originale fornito dall’utente (nessuna modifica).
+2) Copia le cartelle originali assets/images e assets/audio dentro la cartella assets/ del pacchetto, rispettando esattamente i nomi.
+3) Carica tutti i file e le cartelle sullo stesso sito HTTPS (per esempio hosting statico).
+4) Apri index.html dal link pubblico. «GIOCA SUBITO» apre game.html; «INSTALLA» usa il prompt nativo, se disponibile, oppure mostra guide per browser e dispositivo.
+5) Per test locali PWA serve un server localhost, non il doppio clic su index.html.
+6) Il service worker memorizza la pagina e il gioco; le immagini/audio esterni vengono memorizzati dopo essere stati richiesti almeno una volta. Non promettere un offline completo senza aver testato tutti gli asset.
+7) La TOP 100 online richiede connessione internet; non è stata modificata.
+8) Il gioco originale richiede tastiera; non è stata realizzata una versione mobile touch.
+
+Le istruzioni per i browser principali sono basate sulle guide ufficiali di Google, Apple, Microsoft e Mozilla. Le guide per altri browser sono orientative e indicano quando l’installazione non è garantita.

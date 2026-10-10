@@ -467,6 +467,7 @@ const IMAGES = {};
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.jingleVolume=.78; // vittoria/sconfitta: volume indipendente dalle musiche dei livelli
       this.lastMusicAttempt=new Map();
+      this.offlineAudioUrls=new Map(); this.offlineAudioPending=new Map();
       this.files={
         music_title:"SMARTGASmed-8bit-titolo-iniziale.mp3",
         music_level:"SMARTGASmed-8bit-LOOP-livello-esterno.mp3",
@@ -495,12 +496,50 @@ const IMAGES = {};
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
+      // Le musiche in loop e il motore usano URL blob ricavati da file completi.
+      // In questo modo Chrome non deve richiedere segmenti MP3/WAV alla rete
+      // quando il gioco viene riaperto senza connessione.
+      for(const key of Object.keys(this.files)){
+        if(key.startsWith("music_")||key.startsWith("jingle_")||key==="sfx_van_engine"){
+          this.prepareOfflineAudio(key);
+        }
+      }
     }
     url(key){return "assets/audio/"+encodeURIComponent(this.files[key]);}
+    prepareOfflineAudio(key){
+      if(this.offlineAudioUrls.has(key))return Promise.resolve(this.offlineAudioUrls.get(key));
+      if(this.offlineAudioPending.has(key))return this.offlineAudioPending.get(key);
+      const promise=(async()=>{
+        const url=this.url(key);
+        let response=null;
+        // Il precache PWA contiene il file intero: lo leggiamo direttamente,
+        // evitando le richieste Range dei tag <audio> quando si è offline.
+        if("caches" in window){
+          try{response=await caches.match(new Request(url));}
+          catch(error){console.warn("Cache audio non accessibile:",key,error);}
+        }
+        // Se non c'è in cache, scaricalo online (utile anche fuori dalla PWA).
+        if(!response){
+          response=await fetch(url);
+        }
+        if(!response.ok||response.status===206){
+          throw new Error("File audio incompleto: "+key+" (HTTP "+response.status+")");
+        }
+        const blob=await response.blob();
+        if(!blob.size)throw new Error("File audio vuoto: "+key);
+        const objectUrl=URL.createObjectURL(blob);
+        this.offlineAudioUrls.set(key,objectUrl);
+        return objectUrl;
+      })();
+      this.offlineAudioPending.set(key,promise);
+      promise.catch(error=>console.warn("Audio completo non disponibile:",key,error))
+        .finally(()=>this.offlineAudioPending.delete(key));
+      return promise;
+    }
     track(key){
       if(!this.files[key])return null;
       if(!this.tracks.has(key)){
-        const a=new Audio(this.url(key)); a.preload="none";
+        const a=new Audio(); a.preload="auto";
         a.loop=!key.startsWith("jingle_"); a.volume=this.trackVolume(key);
         this.tracks.set(key,a);
       }
@@ -559,17 +598,21 @@ const IMAGES = {};
       else if(!this.paused){if(this.musicKey)this._start(this.musicKey);if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);}
     }
     _start(key){
-      // Prova l'autoplay anche all'apertura: il browser può rifiutarlo senza un gesto.
-      // Al primo tasto/clic, unlock() riprova senza richiedere il clic sul canvas.
+      // Mantiene le regole originali (autoplay, volume, pausa e cambio scena).
+      // Aspetta soltanto che l'URL locale del file COMPLETO sia disponibile.
       if(!this.enabled||this.paused)return;
       const a=this.track(key);if(!a)return;
-      a.volume=this.trackVolume(key);
-      if(a.paused){
-        const now=performance.now();
-        if(now-(this.lastMusicAttempt.get(key)||-10000)<800)return;
-        this.lastMusicAttempt.set(key,now);
-        a.play().catch(()=>{});
-      }
+      this.prepareOfflineAudio(key).then(url=>{
+        if(!this.enabled||this.paused||this.musicKey!==key)return;
+        if(a.src!==url)a.src=url;
+        a.volume=this.trackVolume(key);
+        if(a.paused){
+          const now=performance.now();
+          if(now-(this.lastMusicAttempt.get(key)||-10000)<800)return;
+          this.lastMusicAttempt.set(key,now);
+          a.play().catch(()=>{});
+        }
+      }).catch(()=>{});
     }
     playMusic(key){
       if(this.musicKey===key){this._start(key);return;}
@@ -642,12 +685,17 @@ const IMAGES = {};
       }
       if(!this.enabled||this.paused||!this._unlocked)return;
       if(!this.vanEngine){
-        this.vanEngine=new Audio(this.url("sfx_van_engine"));
+        this.vanEngine=new Audio();
         this.vanEngine.loop=true;
         this.vanEngine.preload="auto";
         this.vanEngine.volume=.45;
       }
-      if(this.vanEngine.paused)this.vanEngine.play().catch(()=>{});
+      const engine=this.vanEngine;
+      this.prepareOfflineAudio("sfx_van_engine").then(url=>{
+        if(!this.enabled||this.paused||!this._unlocked||(typeof van==="undefined")||!van.driving)return;
+        if(engine.src!==url)engine.src=url;
+        if(engine.paused)engine.play().catch(()=>{});
+      }).catch(()=>{});
     }
     playJingle(key){
       this.playMusic(key);

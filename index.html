@@ -52,7 +52,7 @@ $('install').addEventListener('click',async()=>{
 });
 // Il download termina solo quando i file sono presenti nella Cache API.
 const PLAY=$('play'), PRELOAD=$('preload'), LABEL=$('download-label'), DETAIL=$('download-detail'), BAR=$('download-progress'), RETRY=$('retry');
-const ASSET_CACHE='service-run-pwa-v3-20261010';
+const ASSET_CACHE='service-run-pwa-v4-20261010';
 let preparing=false,ready=false;
 function markReady(){ready=true;PLAY.classList.remove('disabled');PLAY.removeAttribute('aria-disabled');LABEL.textContent='Gioco pronto!';DETAIL.textContent='Immagini e audio salvati per i prossimi avvii. Puoi giocare.';BAR.value=100;RETRY.hidden=true;}
 PLAY.addEventListener('click',e=>{if(!ready){e.preventDefault();DETAIL.textContent='Attendi il completamento del download prima di giocare.';}});

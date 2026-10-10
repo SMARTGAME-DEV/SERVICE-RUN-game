@@ -1,5 +1,5 @@
 {
-  "version": "service-run-assets-v3-20261010",
+  "version": "service-run-assets-v4-20261010",
   "files": [
     "assets/images/1-capo-player-fermo-ok.png",
     "assets/images/2-capo-player-destro-ok.png",
@@ -156,9 +156,9 @@
     "assets/audio/SMARTGASmed-fanfara-collezionabile.wav",
     "assets/audio/SMARTGAS-fanfara-chiavetta-caffe.wav",
     "assets/audio/rumore-furgone-loop.wav",
-    "assets/images/player-girl-fermo-ok-ok(5).png",
-    "assets/images/player-girl-passo-destro-ok-ok(2).png",
-    "assets/images/player-girl-passo-sinsitro-ok-ok(1).png",
+    "assets/images/player-girl-fermo-ok-ok.png",
+    "assets/images/player-girl-passo-destro-ok-ok.png",
+    "assets/images/player-girl-passo-sinsitro-ok-ok.png",
     "assets/images/player-girl-passo-destro-passaggio-o-K.png",
     "assets/images/player-girl-passo-sinsitro-passaggio-ok.png",
     "assets/images/player-girl-salto-ok.png",

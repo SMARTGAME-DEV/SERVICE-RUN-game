@@ -1,6 +1,6 @@
 /* Service worker esterno: il gioco non viene modificato. */
-const CACHE = 'service-run-pwa-v2-20261010';
-const CORE = ['./','./index.html','./game.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE = 'service-run-pwa-v3-20261010';
+const CORE = ['./','./index.html','./game.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./preload-assets.json'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
 });

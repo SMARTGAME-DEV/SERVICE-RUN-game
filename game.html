@@ -462,6 +462,7 @@ const IMAGES = {};
       this.enabled=true; this._unlocked=false; this.paused=false;
       this.music=null; this.musicKey=null; this.tracks=new Map(); this.vanEngine=null;
       this.effects=new Map(); this.activeSfx=new Set(); this.lastSfx=new Map();
+      this.sfxContext=null; this.sfxBuffers=new Map(); this.sfxLoading=new Map();
       this.musicVolume=.26; this.sfxVolume=.90; this.maxSfx=7;
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.jingleVolume=.78; // vittoria/sconfitta: volume indipendente dalle musiche dei livelli
@@ -492,6 +493,8 @@ const IMAGES = {};
         sfx_van_engine:"rumore-furgone-loop.wav"
       };
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
+      // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
+      this.prepareSfx();
     }
     url(key){return "assets/audio/"+encodeURIComponent(this.files[key]);}
     track(key){
@@ -510,14 +513,38 @@ const IMAGES = {};
     refreshMusicVolume(){
       for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);
     }
+    prepareSfx(){
+      const Context=window.AudioContext||window.webkitAudioContext;
+      if(!Context)return;
+      try{this.sfxContext=new Context();}
+      catch(error){console.warn("AudioContext non disponibile:",error);return;}
+      // Limita i download/decodifiche simultanei per non appesantire il gioco.
+      const keys=Object.keys(this.files).filter(key=>key.startsWith("sfx_") && key!=="sfx_van_engine");
+      const priority=["sfx_title_enter","sfx_select","sfx_logo","sfx_pickup_bombola"];
+      keys.sort((a,b)=>{
+        const ai=priority.indexOf(a),bi=priority.indexOf(b);
+        return (ai<0?100:ai)-(bi<0?100:bi);
+      });
+      let index=0;
+      const worker=async()=>{
+        while(index<keys.length){
+          const key=keys[index++];
+          try{
+            const response=await fetch(this.url(key));
+            if(!response.ok)throw new Error("HTTP "+response.status);
+            const data=await response.arrayBuffer();
+            const buffer=await this.sfxContext.decodeAudioData(data);
+            this.sfxBuffers.set(key,buffer);
+          }catch(error){console.warn("Effetto non preparato:",key,error);}
+        }
+      };
+      for(let i=0;i<Math.min(3,keys.length);i++)worker();
+    }
     unlock(){
       if(this._unlocked)return;
       this._unlocked=true;
-      // File molto piccoli: prepara gli effetti dopo il primo gesto, senza bloccare il gioco.
-      for(const key of Object.keys(this.files)){
-        if(!key.startsWith("sfx_"))continue;
-        const a=new Audio(this.url(key)); a.preload="auto"; a.load();
-        this.effects.set(key,a);
+      if(this.sfxContext && this.sfxContext.state==="suspended"){
+        this.sfxContext.resume().catch(()=>{});
       }
       if(this.musicKey&&!this.paused){
         // Non applicare il cooldown al primo gesto dopo un autoplay bloccato.
@@ -568,31 +595,40 @@ const IMAGES = {};
       key=this.alias[key]||key;
       if(!this.enabled||!this._unlocked||(!this.files[key]))return;
       if(this.paused&&key!=="sfx_pause")return;
+      const context=this.sfxContext,buffer=this.sfxBuffers.get(key);
+      // Un effetto non ancora pronto viene scartato, MAI riprodotto in ritardo.
+      if(!context||!buffer||context.state!=="running")return;
       const now=performance.now(), last=this.lastSfx.get(key)||0;
       if(now-last<65)return; // evita duplicazioni nello stesso frame
       this.lastSfx.set(key,now);
       if(this.activeSfx.size>=this.maxSfx){
         const oldest=this.activeSfx.values().next().value;
-        if(oldest){oldest.pause();this.activeSfx.delete(oldest);}
+        if(oldest){oldest.stop();this.activeSfx.delete(oldest);}
       }
-      const base=this.effects.get(key);
-      const a=base?base.cloneNode(true):new Audio(this.url(key));
-      a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume));
+      const source=context.createBufferSource();
+      const gain=context.createGain();
+      source.buffer=buffer;
+      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume));
+      source.connect(gain);gain.connect(context.destination);
       if(key==="sfx_coffee_key_fanfare"){
         this.coffeeFanfarePlaying=true;
         this.refreshMusicVolume();
       }
-      this.activeSfx.add(a);
-      const clear=()=>{
-        this.activeSfx.delete(a);
+      this.activeSfx.add(source);
+      source.onended=()=>{
+        this.activeSfx.delete(source);
+        source.disconnect();gain.disconnect();
         if(key==="sfx_coffee_key_fanfare"){
           this.coffeeFanfarePlaying=false;
           this.refreshMusicVolume();
         }
       };
-      a.addEventListener("ended",clear,{once:true});
-      a.addEventListener("error",clear,{once:true});
-      a.play().catch(clear);
+      try{source.start(0);}catch(error){
+        this.activeSfx.delete(source);
+        if(key==="sfx_coffee_key_fanfare"){
+          this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
+        }
+      }
     }
     // Il motore usa un canale dedicato: non interrompe la musica del livello.
     // Rimane in loop finché il giocatore è a bordo; in pausa mantiene il punto.
@@ -621,7 +657,7 @@ const IMAGES = {};
       this.paused=true;
       for(const a of this.tracks.values())a.pause();
       if(this.vanEngine)this.vanEngine.pause();
-      for(const a of this.activeSfx)a.pause();
+      for(const a of this.activeSfx){try{a.stop();}catch(e){}}
       this.activeSfx.clear();
       this.coffeeFanfarePlaying=false;
       this.refreshMusicVolume();
@@ -635,7 +671,7 @@ const IMAGES = {};
       this.syncVanEngine(false);
       this.stopMusic();
       for(const a of this.tracks.values()){a.pause();try{a.currentTime=0;}catch(e){}}
-      for(const a of this.activeSfx)a.pause();
+      for(const a of this.activeSfx){try{a.stop();}catch(e){}}
       this.activeSfx.clear();this.lastSfx.clear();this.lastMusicAttempt.clear();
       this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
       this.paused=false;

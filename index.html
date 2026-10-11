@@ -1,97 +1,10 @@
-<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101820"><meta name="description" content="SERVICE RUN game: gioca subito o installa come app"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon-192.png"><link rel="apple-touch-icon" href="./icon-192.png"><title>SERVICE RUN game</title>
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;background:radial-gradient(ellipse at 50% 10%,#1b3b39 0,#101820 65%);color:#eaf7ef}body{display:grid;place-items:center;padding:24px}.panel{width:min(100%,590px);background:#111d27;border:1px solid #396653;border-radius:22px;box-shadow:0 24px 90px #0008;padding:clamp(22px,5vw,44px);text-align:center}.kicker{font-size:12px;letter-spacing:.22em;color:#77dba0;font-weight:800}.brand{font-size:clamp(32px,7vw,54px);line-height:1.05;margin:14px 0 8px;font-weight:1000;letter-spacing:.04em}.brand small{display:block;font-size:.35em;letter-spacing:.25em;color:#a4bdb0;margin-top:9px}.sub{color:#b5c8c2;margin:18px 0 26px}.actions{display:grid;gap:12px}.actions[hidden]{display:none}button,.play{font:inherit;cursor:pointer;border-radius:11px;padding:16px 14px;font-weight:900;letter-spacing:.04em;text-decoration:none;display:block;text-align:center}.play{color:#0b2419;background:#53d68b;border:2px solid #53d68b}.install{background:transparent;color:#baf8d2;border:2px solid #53d68b}.play:hover,.install:hover{filter:brightness(1.12)}.small{color:#95aaa4;font-size:13px;line-height:1.55;margin:22px 0 0}.guide{margin-top:24px;padding:20px;text-align:left;background:#0d151e;border:1px solid #305143;border-radius:12px}.guide[hidden]{display:none}.guide h2{margin:0 0 12px;font-size:20px}.guide ol{padding-left:22px;line-height:1.7;color:#d3e5da}.guide li{margin-bottom:7px}.guide label{display:block;font-size:13px;color:#b4c6be;margin-bottom:6px}select{width:100%;background:#1b3034;color:white;padding:12px;border:1px solid #567968;border-radius:9px;font:inherit}.notice{font-size:13px;color:#c1d1c9;line-height:1.6}.close{background:#263b39;color:#fff;border:1px solid #47665b;padding:9px 14px;font-size:13px;letter-spacing:0;margin-top:12px}.preload{margin-top:20px;padding:15px;border:1px solid #305143;border-radius:12px;background:#0d151e;text-align:left}.preload[hidden]{display:none}.preload label{display:block;font-size:13px;margin-bottom:8px;color:#d3e5da}.preload progress{display:block;width:100%;height:16px;accent-color:#53d68b}.preload .detail{font-size:12px;color:#a8c1b6;margin-top:8px;line-height:1.5}.preload .retry{margin-top:10px;padding:9px 14px;font-size:13px;background:#214c38;color:white;border:1px solid #53d68b}.play.disabled{opacity:.48;cursor:not-allowed;pointer-events:none}.status{font-size:13px;color:#c0d8cc;min-height:1.5em;margin-top:10px}a{color:#85e7b0}
-</style></head><body><main class="panel"><div class="kicker">IL GIOCO</div><h1 class="brand">SERVICE RUN<small>GAME</small></h1><p class="sub">Scegli come vuoi giocare</p><section class="preload" id="preload"><label for="download-progress" id="download-label">Preparazione del gioco in corso…</label><progress id="download-progress" max="100" value="0"></progress><div class="detail" id="download-detail">Controllo delle risorse necessarie…</div><button class="retry" id="retry" type="button" hidden>Riprova il download</button></section><div class="actions" id="actions" hidden><a class="play disabled" id="play" href="./game.html" aria-disabled="true">▶ GIOCA SUBITO</a><button class="install" type="button" id="install">↓ INSTALLA SERVICE RUN game</button></div><p class="status" id="status" aria-live="polite"></p><section class="guide" id="guide" hidden><h2>Come installare</h2><label for="browser">Browser e dispositivo (puoi cambiarli)</label><select id="browser"><option value="chromeDesktop">Google Chrome · Computer</option><option value="edgeDesktop">Microsoft Edge · Computer</option><option value="firefoxWindows">Firefox · Windows</option><option value="safariMac">Safari · Mac</option><option value="safariIos">Safari · iPhone/iPad</option><option value="chromeIos">Chrome · iPhone/iPad</option><option value="chromeAndroid">Chrome · Android</option><option value="edgeAndroid">Edge · Android</option><option value="samsungAndroid">Samsung Internet · Android</option><option value="braveDesktop">Brave · Computer</option><option value="operaDesktop">Opera · Computer</option><option value="vivaldiDesktop">Vivaldi · Computer</option><option value="firefoxAndroid">Firefox · Android</option><option value="other">Altro browser</option></select><ol id="steps"></ol><p class="notice" id="note"></p><button class="close" id="close" type="button">Chiudi guida</button></section><p class="small">L'installazione è facoltativa. Per installare l'app serve un sito HTTPS (o localhost per le prove). Aprendo un file locale puoi usare <b>GIOCA SUBITO</b>, ma non installare una vera PWA.<br>Il gioco è progettato per tastiera e schermo desktop; su smartphone i controlli touch non sono ancora stati adattati.</p></main>
-<script>
-(()=>{'use strict';
-let installPrompt=null;
-const $=id=>document.getElementById(id);
-const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
-const ua=navigator.userAgent||'';
-function detect(){
- const ios=/iPad|iPhone|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
- const android=/Android/.test(ua);
- if(ios){if(/CriOS/.test(ua))return 'chromeIos';return 'safariIos';}
- if(android){if(/SamsungBrowser/.test(ua))return 'samsungAndroid';if(/EdgA/.test(ua))return 'edgeAndroid';if(/Firefox|Fennec/.test(ua))return 'firefoxAndroid';return 'chromeAndroid';}
- if(/Edg\//.test(ua))return 'edgeDesktop';
- if(/Firefox\//.test(ua)&&/Windows/.test(ua))return 'firefoxWindows';
- if(/OPR\//.test(ua))return 'operaDesktop';
- if(/Vivaldi\//.test(ua))return 'vivaldiDesktop';
- if(/Chrome\//.test(ua))return 'chromeDesktop';
- if(/Safari\//.test(ua)&&/Macintosh/.test(ua))return 'safariMac';
- return 'other';
-}
-const guides={
- chromeDesktop:{steps:['Apri il sito in Google Chrome.','Apri il menu ⋮ in alto a destra, poi «Trasmetti, salva e condividi» → «Installa questa pagina come app». In alternativa, usa l’icona Installa nella barra degli indirizzi, se presente.','Conferma l’installazione.'],note:'Procedura verificata sulla guida ufficiale Google. Il testo può variare con la versione.'},
- edgeDesktop:{steps:['Apri il sito in Microsoft Edge.','Menu ⋯ → «Altri strumenti» → «App» → «Installa questo sito come app», oppure usa l’icona d’installazione se disponibile.','Conferma. L’app è gestibile anche da edge://apps.'],note:'Procedura verificata sulla guida ufficiale Microsoft.'},
- firefoxWindows:{steps:['Apri il sito in Firefox su Windows.','Cerca il pulsante «Web app» nella barra degli indirizzi e fai clic.','Firefox crea un’app separata e un collegamento nel menu Start.'],note:'Funzione disponibile da Firefox 143 su Windows; per la versione Microsoft Store da Firefox 150. Non è la stessa installazione PWA di Chrome.'},
- safariMac:{steps:['Su macOS Sonoma 14 o successivo apri il sito in Safari.','Menu «File» → «Aggiungi al Dock», oppure «Condividi» → «Aggiungi al Dock».','Conferma il nome e fai clic su «Aggiungi».'],note:'Procedura verificata sulla guida ufficiale Apple. Richiede macOS Sonoma 14 o successivo.'},
- safariIos:{steps:['Apri il sito in Safari su iPhone o iPad.','Tocca «Condividi» (in alcune versioni: «Altro» → «Condividi»).','Seleziona «Aggiungi alla schermata Home».','Se disponibile, attiva «Apri come app web» e tocca «Aggiungi».'],note:'Procedura verificata sulla guida ufficiale Apple. Il pulsante Condividi cambia posizione secondo il layout.'},
- chromeIos:{steps:['Apri il sito in Chrome su iPhone o iPad.','Tocca il pulsante «Condividi» accanto alla barra degli indirizzi.','Seleziona «Aggiungi a schermata Home» e conferma.'],note:'Procedura verificata sulla guida ufficiale Google. Il risultato può essere un collegamento anziché un’app autonoma, secondo il dispositivo e il sito.'},
- chromeAndroid:{steps:['Apri il sito in Chrome su Android.','Tocca il menu ⋮ → «Installa» oppure «Installa app» / «Aggiungi a schermata Home», secondo la versione.','Segui la conferma visualizzata.'],note:'Procedura verificata sulla guida ufficiale Google; alcune voci variano.'},
- edgeAndroid:{steps:['Apri il sito in Edge su Android.','Apri il menu del browser e cerca «Aggiungi al telefono», «Aggiungi alla schermata Home» oppure «Installa app».','Segui le istruzioni che compaiono, se disponibili.'],note:'Le etichette variano secondo versione. Se non trovi l’opzione, usa Chrome su Android; non è garantita un’installazione autonoma.'},
- samsungAndroid:{steps:['Apri il sito in Samsung Internet su Android.','Apri il menu del browser e cerca «Aggiungi pagina a» o «Aggiungi a schermata Home».','Se disponibile, conferma l’aggiunta.'],note:'Le voci possono variare. Non è garantito che si apra in una finestra separata.'},
- braveDesktop:{steps:['Apri il sito in Brave sul computer.','Controlla se nella barra degli indirizzi è presente un’icona per installare l’app.','Se non compare, apri il menu e cerca la voce per installare o creare un’app/collegamento.'],note:'I menu di Brave cambiano tra versioni; questa è una guida orientativa, non una scorciatoia verificata per tutte le versioni.'},
- operaDesktop:{steps:['Apri il sito in Opera sul computer.','Controlla il menu del browser e la barra degli indirizzi per un’opzione di installazione o aggiunta alla schermata iniziale.','Se non compare, usa Chrome o Edge per installare la PWA.'],note:'La disponibilità dell’installazione dipende dalla versione di Opera; non è garantita.'},
- vivaldiDesktop:{steps:['Apri il sito in Vivaldi sul computer.','Cerca nel menu contestuale della scheda o nel menu del browser la voce relativa a installazione PWA/app.','Se non compare, apri lo stesso sito con Chrome o Edge.'],note:'Procedura orientativa: menu e supporto cambiano con le versioni.'},
- firefoxAndroid:{steps:['Apri il sito in Firefox per Android.','Apri il menu ⋮ e cerca «Installa» o «Aggiungi alla schermata Home».','Conferma, se l’opzione è disponibile.'],note:'La voce dipende dalla versione e dall’installabilità del sito.'},
- other:{steps:['Apri questo sito in un browser aggiornato.','Cerca un’opzione per installare l’app o aggiungere il sito alla schermata Home.','Se non è disponibile, puoi usare «GIOCA SUBITO» oppure installare con Chrome o Edge su computer.'],note:'Non tutti i browser supportano le PWA allo stesso modo. Scegli manualmente una delle guide qui sopra se il rilevamento non è corretto.'}
-};
-function showGuide(){ $('guide').hidden=false;$('browser').value=detect();renderGuide();$('guide').scrollIntoView({behavior:'smooth',block:'nearest'})}
-function renderGuide(){const g=guides[$('browser').value]||guides.other;$('steps').replaceChildren(...g.steps.map(s=>{const li=document.createElement('li');li.textContent=s;return li}));$('note').textContent=g.note}
-$('browser').addEventListener('change',renderGuide);
-$('close').addEventListener('click',()=>{$('guide').hidden=true});
-window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;$('status').textContent='Installazione disponibile su questo browser.'});
-window.addEventListener('appinstalled',()=>{installPrompt=null;$('status').textContent='Applicazione installata.';$('guide').hidden=true});
-$('install').addEventListener('click',async()=>{
- if(isStandalone()){$('status').textContent='Stai già usando la versione installata.';return}
- if(location.protocol==='file:'){$('status').textContent='Per installare la PWA, apri il sito su HTTPS.';showGuide();return}
- if(installPrompt){const prompt=installPrompt;installPrompt=null;try{await prompt.prompt();const choice=await prompt.userChoice;if(choice?.outcome!=='accepted')showGuide()}catch(e){showGuide()}return}
- showGuide();
-});
-// Il download termina solo quando i file sono presenti nella Cache API.
-const PLAY=$('play'), PRELOAD=$('preload'), LABEL=$('download-label'), DETAIL=$('download-detail'), BAR=$('download-progress'), RETRY=$('retry');
-const ASSET_CACHE='service-run-pwa-v4-20261010';
-let preparing=false,ready=false;
-function markReady(){ready=true;PRELOAD.hidden=true;$('actions').hidden=false;PLAY.classList.remove('disabled');PLAY.removeAttribute('aria-disabled');LABEL.textContent='Gioco pronto!';DETAIL.textContent='Immagini e audio salvati per i prossimi avvii. Puoi giocare.';BAR.value=100;RETRY.hidden=true;}
-PLAY.addEventListener('click',e=>{if(!ready){e.preventDefault();DETAIL.textContent='Attendi il completamento del download prima di giocare.';}});
-async function prepare(){
- if(preparing)return;preparing=true;RETRY.hidden=true;LABEL.textContent='Preparazione del gioco in corso…';DETAIL.textContent='Controllo dei file…';
- try{
-  if(!('caches' in window)||!('serviceWorker' in navigator))throw Error('Questo browser non supporta la cache offline richiesta.');
-  if(location.protocol!=='https:'&&location.hostname!=='localhost')throw Error('Per il precaricamento serve aprire il sito tramite HTTPS.');
-  // Registrazione e attivazione prima del caricamento, per usare le risorse anche offline.
-  await navigator.serviceWorker.register('./service-worker.js');
-  await navigator.serviceWorker.ready;
-  const manifestResponse=await fetch('./preload-assets.json',{cache:'no-store'});
-  if(!manifestResponse.ok)throw Error('Elenco delle risorse non disponibile (HTTP '+manifestResponse.status+').');
-  const manifest=await manifestResponse.json();
-  const files=['./game.html',...manifest.files.map(s=>'./'+s)];
-  const cache=await caches.open(ASSET_CACHE);
-  let done=0;const total=files.length;let cursor=0;const failed=[];
-  async function one(path){
-   const url=new URL(path,location.href).href;
-   let existing=await cache.match(url);
-   if(!existing){
-    let response;
-    for(let attempt=0;attempt<2;attempt++){
-     try{response=await fetch(url,{cache:'default'});if(!response.ok||response.type==='opaque')throw Error('HTTP '+response.status);await cache.put(url,response.clone());break;}
-     catch(err){if(attempt===1)throw Error(path+' ('+err.message+')');}
-    }
-   }
-   done++;BAR.value=Math.round(done/total*100);
-   LABEL.textContent='Preparazione del gioco: '+BAR.value+'%';
-   DETAIL.textContent=done+' di '+total+' risorse pronte. Al primo avvio può richiedere qualche minuto.';
-  }
-  async function worker(){while(cursor<total){const index=cursor++;try{await one(files[index]);}catch(err){failed.push(err.message);}}}
-  await Promise.all(Array.from({length:4},worker));
-  if(failed.length)throw Error(failed.length+' risorse non scaricate. Prima: '+failed[0]);
-  markReady();
- }catch(err){LABEL.textContent='Preparazione incompleta';DETAIL.textContent=err.message+' Controlla la connessione e premi «Riprova il download».';RETRY.hidden=false;}
- finally{preparing=false;}
-}
-RETRY.addEventListener('click',prepare);
-prepare();
-})();
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101820"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon-192.png"><link rel="apple-touch-icon" href="./icon-192.png"><title>SMARTGASmed – SERVICE RUN</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:18px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:radial-gradient(ellipse at 50% 10%,#1b3b39,#101820 65%);color:#eaf7ef}.panel{width:min(100%,570px);text-align:center;background:#111d27;border:1px solid #396653;border-radius:20px;padding:clamp(20px,4vw,38px);box-shadow:0 20px 70px #0009}small{letter-spacing:.12em;color:#86d8a7}h1{font-size:clamp(29px,6vw,44px);margin:12px 0 8px}.sub{color:#bed2c7}progress{width:100%;height:17px;accent-color:#53d68b}#detail,#status{font-size:13px;color:#b2cfc2;line-height:1.5;min-height:30px}.box{background:#0c1921;border:1px solid #325344;padding:17px;border-radius:12px;margin:22px 0}.actions{display:grid;gap:11px}.actions[hidden],#guide[hidden]{display:none}.btn{display:block;width:100%;border-radius:11px;border:2px solid #53d68b;padding:15px;text-decoration:none;font:900 16px system-ui;cursor:pointer}.play{background:#53d68b;color:#0b2419}.install{background:transparent;color:#baf8d2}.btn[disabled]{opacity:.45;pointer-events:none}#guide{text-align:left;margin-top:17px;line-height:1.6;color:#d5e8dc}#guide button{margin-top:9px;padding:9px;border-radius:8px}a{color:inherit}@media(max-width:700px){.panel{padding:20px}}
+</style></head><body><main class="panel"><small id="device">SERVICE RUN</small><h1>SMARTGASmed</h1><p class="sub">SERVICE RUN · Gioca oppure installa l'app</p><div class="box"><strong id="state">Preparazione del gioco…</strong><p><progress id="bar" max="100" value="0"></progress></p><div id="detail">Controllo di tutti i pacchetti</div></div><div class="actions" id="actions" hidden><a href="./game.html" id="play" class="btn play">▶ GIOCA SUBITO</a><button id="install" class="btn install">↓ INSTALLA</button></div><button id="retry" class="btn install" hidden>RIPROVA IL DOWNLOAD</button><p id="status" aria-live="polite"></p><div id="guide" class="box" hidden><strong>Installazione sul dispositivo</strong><p id="instructions"></p><button id="close">Chiudi</button></div><small>L'installazione è facoltativa. La classifica online richiede Internet; il resto del gioco può funzionare offline dopo il caricamento completo.</small></main><script>
+(()=>{'use strict';const $=id=>document.getElementById(id);const ua=navigator.userAgent;const ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1),android=/Android/.test(ua),mobile=ios||android||matchMedia('(pointer:coarse) and (max-width:1100px)').matches;const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;$('device').textContent=mobile?'VERSIONE SMARTPHONE':'VERSIONE COMPUTER';$('play').href=mobile?'./game-mobile.html':'./game.html';let promptInstall=null,preparing=false;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptInstall=e});window.addEventListener('appinstalled',()=>{$('status').textContent='Installazione completata'});
+function guide(){let msg=ios?'Su iPhone: apri in Safari, tocca Condividi e seleziona “Aggiungi alla schermata Home”, poi “Apri come app web” se disponibile.':android?'Su Android: apri il menu del browser (⋮) e scegli “Installa app” o “Aggiungi a schermata Home”.':'Su computer: in Chrome o Edge usa il menu del browser e scegli “Installa app” (o l’icona di installazione nella barra degli indirizzi).';$('instructions').textContent=msg;$('guide').hidden=false;}
+$('close').onclick=()=>{$('guide').hidden=true};$('install').onclick=async()=>{if(standalone()){$('status').textContent='App già installata e aperta.';return}if(promptInstall){const p=promptInstall;promptInstall=null;try{await p.prompt();await p.userChoice}catch(e){guide()}}else guide()};
+async function run(){if(preparing)return;preparing=true;$('retry').hidden=true;$('actions').hidden=true;$('status').textContent='';$('state').textContent='Scaricamento pacchetti…';let urls;try{const r=await fetch('./asset-list.json',{cache:'no-store'});if(!r.ok)throw Error('Elenco dei file non trovato');urls=await r.json()}catch(e){return fail(e.message)}if(!('caches'in window))return fail('Cache offline non disponibile in questo browser');const cache=await caches.open('service-run-dual-v2-20261011-files');let count=0,errors=[];const jobs=[...new Set(['./asset-list.json',...urls])];let next=0;async function worker(){while(next<jobs.length){const path=jobs[next++];try{const req=new Request(path);let res=await cache.match(req);if(!res){res=await fetch(req,{cache:'reload'});if(!res.ok)throw Error(res.status);await cache.put(req,res.clone())}}catch(e){errors.push(path)}count++;$('bar').value=Math.round(count/jobs.length*100);$('detail').textContent=count+' / '+jobs.length+' risorse controllate';}}await Promise.all(Array.from({length:Math.min(6,jobs.length)},worker));if(errors.length)return fail(errors.length+' file mancanti. Primo: '+errors[0]);$('state').textContent='Gioco pronto!';$('detail').textContent=jobs.length+' risorse disponibili anche offline';$('actions').hidden=false;preparing=false;}
+function fail(m){preparing=false;$('state').textContent='Download incompleto';$('status').textContent=m;$('retry').hidden=false}$('retry').onclick=run;if('serviceWorker'in navigator&&location.protocol!=='file:'){navigator.serviceWorker.register('./service-worker.js').catch(()=>{})}run();})();
 </script></body></html>

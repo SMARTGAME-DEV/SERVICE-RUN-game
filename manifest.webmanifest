@@ -1,14 +1,13 @@
 {
-  "id": "./game.html",
-  "name": "SERVICE RUN game",
+  "name": "SMARTGASmed – SERVICE RUN",
   "short_name": "SERVICE RUN",
-  "description": "SERVICE RUN game - videogioco SMARTGASmed",
-  "lang": "it",
-  "start_url": "./game.html",
+  "description": "SMARTGASmed Service Run: gioco offline per computer e smartphone",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#101820",
+  "background_color": "#0b0f14",
   "theme_color": "#101820",
+  "orientation": "landscape",
   "icons": [
     {
       "src": "./icon-192.png",
@@ -20,7 +19,7 @@
       "src": "./icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

@@ -14,12 +14,12 @@ b{font-weight:800}
 /* SMARTGASmed responsive touch pad, desktop unchanged */
 #touchControls,#rotateHint{display:none}
 @media (pointer:coarse) and (max-width:1100px){
- html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none}
+ html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto}
  #touchControls{display:block;position:fixed;inset:0;z-index:40;pointer-events:none;user-select:none;-webkit-user-select:none}
- .touchCross{position:absolute;bottom:max(5px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(3,var(--btn));grid-template-rows:repeat(3,var(--btn));gap:3px;pointer-events:none;--btn:clamp(42px,min(11vw,18vh),75px)}
- .touchCross.left{left:max(5px,env(safe-area-inset-left))}.touchCross.right{right:max(5px,env(safe-area-inset-right))}
- .touchKey{appearance:none;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;border:2px solid #80d6a4;border-radius:12px;background:#0a2c32c9;color:white;font:bold clamp(13px,2.5vw,19px) system-ui;box-shadow:0 2px 9px #0008;padding:0}
- .touchKey.active{background:#238253eb;border-color:white}.touchKey[data-key="Space"]{font-size:clamp(10px,2vw,14px)}
+ .touchCross{position:absolute;bottom:max(8px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(3,var(--btn));grid-template-rows:repeat(3,var(--btn));gap:4px;pointer-events:none;--btn:clamp(34px,min(9vw,13vh),58px)}
+ .touchCross.left{left:max(8px,env(safe-area-inset-left))}.touchCross.right{right:max(8px,env(safe-area-inset-right))}
+ .touchKey{appearance:none;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;border:2px solid #80d6a4;border-radius:11px;background:#0a2c32d9;color:white;font:bold clamp(11px,2.1vw,16px) system-ui;box-shadow:0 2px 8px #0007;padding:0;opacity:.93}
+ .touchKey.active{background:#238253f0;border-color:white}.touchKey[data-key="Space"]{font-size:clamp(9px,1.7vw,12px);letter-spacing:.02em}
  #rotateHint{display:none}
  #mobileNameHelp{display:none}
  body.mobile-keyboard #touchControls{display:none!important}
@@ -58,13 +58,22 @@ b{font-weight:800}
   // Ridimensiona soltanto la PRESENTAZIONE, mai la superficie logica.
   // Conserva le proporzioni senza deformazioni; nessun reset del canvas al resize.
   function fitCanvas() {
-    const availableW = Math.max(1, window.innerWidth - (matchMedia("(pointer:coarse)").matches?2:24));
-    const availableH = Math.max(1, window.innerHeight - (matchMedia("(pointer:coarse)").matches?2:24));
-    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, 1.5);
-    canvas.style.width = Math.floor(GAME_W * scale) + "px";
-    canvas.style.height = Math.floor(GAME_H * scale) + "px";
+    const coarse = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
+    const availableW = Math.max(1, window.innerWidth - (coarse ? 0 : 24));
+    const availableH = Math.max(1, window.innerHeight - (coarse ? 0 : 24));
+    if (coarse && window.innerWidth > window.innerHeight) {
+      // Riempie tutto il viewport orizzontale senza tagliare HUD o bordo del livello.
+      // Lo stiramento orizzontale è temporaneo finché non ridisegniamo la camera widescreen.
+      canvas.style.width = Math.ceil(availableW) + "px";
+      canvas.style.height = Math.ceil(availableH) + "px";
+    } else {
+      const scale = Math.min(availableW / GAME_W, availableH / GAME_H, 1.5);
+      canvas.style.width = Math.floor(GAME_W * scale) + "px";
+      canvas.style.height = Math.floor(GAME_H * scale) + "px";
+    }
   }
   window.addEventListener("resize", fitCanvas);
+  window.addEventListener("orientationchange",()=>setTimeout(fitCanvas,180));
   fitCanvas();
 
   const W = () => GAME_W;
@@ -534,13 +543,10 @@ const IMAGES = {};
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
-      // Le musiche in loop e il motore usano URL blob ricavati da file completi.
-      // In questo modo Chrome non deve richiedere segmenti MP3/WAV alla rete
-      // quando il gioco viene riaperto senza connessione.
+      // Prepara URL locali completi anche per gli effetti.
+      // Su iPhone questo offre un fallback affidabile se WebAudio non parte subito.
       for(const key of Object.keys(this.files)){
-        if(key.startsWith("music_")||key.startsWith("jingle_")||key==="sfx_van_engine"){
-          this.prepareOfflineAudio(key);
-        }
+        this.prepareOfflineAudio(key);
       }
     }
     url(key){return "assets/audio/"+encodeURIComponent(this.files[key]);}
@@ -618,12 +624,12 @@ const IMAGES = {};
       for(let i=0;i<Math.min(3,keys.length);i++)worker();
     }
     unlock(){
-      if(this._unlocked)return;
+      const firstUnlock=!this._unlocked;
       this._unlocked=true;
-      if(this.sfxContext && this.sfxContext.state==="suspended"){
+      if(this.sfxContext && this.sfxContext.state!=="running"){
         this.sfxContext.resume().catch(()=>{});
       }
-      if(this.musicKey&&!this.paused){
+      if((firstUnlock||this.sfxContext?.state!=="running") && this.musicKey&&!this.paused){
         // Non applicare il cooldown al primo gesto dopo un autoplay bloccato.
         this.lastMusicAttempt.delete(this.musicKey);
         this._start(this.musicKey);
@@ -672,13 +678,40 @@ const IMAGES = {};
       const key=flashMode?"music_flash":(!inside&&finalRun?"music_final":inside?"music_interior":"music_level");
       this.playMusic(key);
     }
+    playSfxFallback(key,volume=1){
+      this.prepareOfflineAudio(key).then(url=>{
+        if(!this.enabled||!this._unlocked||!this.files[key])return;
+        if(this.paused&&key!=="sfx_pause")return;
+        const now=performance.now(), last=this.lastSfx.get(key)||0;
+        if(now-last<65)return;
+        this.lastSfx.set(key,now);
+        const a=new Audio();
+        a.preload="auto";
+        a.src=url;
+        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume));
+        if(key==="sfx_coffee_key_fanfare"){
+          this.coffeeFanfarePlaying=true;
+          this.refreshMusicVolume();
+          a.addEventListener('ended',()=>{this.coffeeFanfarePlaying=false;this.refreshMusicVolume();},{once:true});
+          a.addEventListener('pause',()=>{this.coffeeFanfarePlaying=false;this.refreshMusicVolume();},{once:true});
+        }
+        a.play().catch(()=>{
+          if(key==="sfx_coffee_key_fanfare"){
+            this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
+          }
+        });
+      }).catch(()=>{});
+    }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
       if(!this.enabled||!this._unlocked||(!this.files[key]))return;
       if(this.paused&&key!=="sfx_pause")return;
       const context=this.sfxContext,buffer=this.sfxBuffers.get(key);
-      // Un effetto non ancora pronto viene scartato, MAI riprodotto in ritardo.
-      if(!context||!buffer||context.state!=="running")return;
+      // Fallback HTMLAudio per iPhone / casi in cui WebAudio non sia ancora pronto.
+      if(!context||!buffer||context.state!=="running"){
+        this.playSfxFallback(key,volume);
+        return;
+      }
       const now=performance.now(), last=this.lastSfx.get(key)||0;
       if(now-last<65)return; // evita duplicazioni nello stesso frame
       this.lastSfx.set(key,now);
@@ -776,6 +809,7 @@ const audio = new AudioManager();
     // Nella schermata di apertura l'audio resta silenzioso fino a INVIO.
   }
   addEventListener("pointerdown", userGesture, {passive:true});
+  addEventListener("touchstart", userGesture, {passive:true});
   // Qualsiasi tasto sblocca l'audio: non è più necessario cliccare sul gioco.
   addEventListener("keydown", userGesture, {passive:true});
 

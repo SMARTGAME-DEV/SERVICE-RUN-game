@@ -1,5 +1,5 @@
 /* SMARTGASmed dual desktop/mobile - offline PWA */
-const CACHE='service-run-dual-v2-20261011-files';
+const CACHE='service-run-dual-v3-20261011-fix1';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{
   for(const key of await caches.keys()){
@@ -12,7 +12,6 @@ self.addEventListener('fetch',event=>{
   const req=event.request;
   if(req.method!=='GET'||new URL(req.url).origin!==self.location.origin)return;
   event.respondWith((async()=>{
-    // Always revalidate HTML/manifest and asset index when online.
     const isDocument=req.mode==='navigate'||/\.(?:html|json|webmanifest)(?:$|\?)/i.test(new URL(req.url).pathname);
     const cache=await caches.open(CACHE);
     if(isDocument){

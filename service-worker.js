@@ -1,9 +1,9 @@
 /* SMARTGASmed dual desktop/mobile - offline PWA */
-const CACHE='service-run-dual-v5-20261011-mobile13';
+const CACHE='service-run-dual-v6-20261011-mobile14';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{
   for(const key of await caches.keys()){
-    if((key.startsWith('service-run-mobile-v1-')||key.startsWith('service-run-dual-'))&&key!==CACHE)await caches.delete(key);
+    // Vecchie cache mantenute per migrazione delle risorse già scaricate.
   }
   await self.clients.claim();
 })())});

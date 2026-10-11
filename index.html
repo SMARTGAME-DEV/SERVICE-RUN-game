@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="./icon-192.png">
 <title>SMARTGASmed – SERVICE RUN</title>
 <style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:18px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:radial-gradient(ellipse at 50% 10%,#1b3b39,#101820 65%);color:#eaf7ef}.panel{width:min(100%,570px);text-align:center;background:#111d27;border:1px solid #396653;border-radius:20px;padding:clamp(20px,4vw,38px);box-shadow:0 20px 70px #0009}small{letter-spacing:.12em;color:#86d8a7}h1{font-size:clamp(29px,6vw,44px);margin:12px 0 8px}.sub{color:#bed2c7}progress{width:100%;height:17px;accent-color:#53d68b}#detail,#status{font-size:13px;color:#b2cfc2;line-height:1.5;min-height:30px}.box{background:#0c1921;border:1px solid #325344;padding:17px;border-radius:12px;margin:22px 0}.actions{display:grid;gap:11px}.btn{display:block;width:100%;border-radius:11px;border:2px solid #53d68b;padding:15px;text-decoration:none;font:900 16px system-ui;cursor:pointer}.play{background:#53d68b;color:#0b2419}.install{background:transparent;color:#baf8d2}.btn[hidden],.box[hidden],#status[hidden],#retry[hidden],#guide[hidden]{display:none!important}#guide{text-align:left;margin-top:17px;line-height:1.6;color:#d5e8dc}#guide button{margin-top:9px;padding:9px;border-radius:8px}a{color:inherit}#rotateApp{display:none}.standalone-mobile #rotateApp{display:none}@media(max-width:700px){.panel{padding:20px}}@media (orientation:portrait){body.standalone-mobile #rotateApp{display:flex;position:fixed;inset:0;z-index:50;background:rgba(7,23,32,.97);align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px;font:700 24px system-ui}body.standalone-mobile #rotateApp span{font-size:54px;margin-bottom:14px}body.standalone-mobile .panel{opacity:.16;pointer-events:none}}
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:18px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:radial-gradient(ellipse at 50% 10%,#1b3b39,#101820 65%);color:#eaf7ef}.panel{width:min(100%,570px);text-align:center;background:#111d27;border:1px solid #396653;border-radius:20px;padding:clamp(20px,4vw,38px);box-shadow:0 20px 70px #0009}small{letter-spacing:.12em;color:#86d8a7}h1{font-size:clamp(29px,6vw,44px);margin:12px 0 8px}.sub{color:#bed2c7}progress{width:100%;height:17px;accent-color:#53d68b}#detail,#status{font-size:13px;color:#b2cfc2;line-height:1.5;min-height:30px}.box{background:#0c1921;border:1px solid #325344;padding:17px;border-radius:12px;margin:22px 0}.actions{display:grid;gap:11px}.actions[hidden]{display:none!important}.btn{display:block;width:100%;border-radius:11px;border:2px solid #53d68b;padding:15px;text-decoration:none;font:900 16px system-ui;cursor:pointer}.play{background:#53d68b;color:#0b2419}.install{background:transparent;color:#baf8d2}.btn[hidden],.box[hidden],#status[hidden],#retry[hidden],#guide[hidden]{display:none!important}#guide{text-align:left;margin-top:17px;line-height:1.6;color:#d5e8dc}#guide button{margin-top:9px;padding:9px;border-radius:8px}a{color:inherit}#rotateApp{display:none}.standalone-mobile #rotateApp{display:none}@media(max-width:700px){.panel{padding:20px}}@media (orientation:portrait){body.standalone-mobile #rotateApp{display:flex;position:fixed;inset:0;z-index:50;background:rgba(7,23,32,.97);align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px;font:700 24px system-ui}body.standalone-mobile #rotateApp span{font-size:54px;margin-bottom:14px}body.standalone-mobile .panel{opacity:.16;pointer-events:none}}
 </style>
 </head>
 <body>
@@ -36,7 +36,7 @@
 </main>
 <script>
 (()=>{'use strict';
-const CACHE='service-run-dual-v5-20261011-mobile13';
+const CACHE='service-run-dual-v6-20261011-mobile14';
 const $=id=>document.getElementById(id);
 const ua=navigator.userAgent;
 const ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
@@ -47,7 +47,12 @@ const body=document.body;
 if(mobile&&standalone())body.classList.add('standalone-mobile');
 $('device').textContent=mobile?'VERSIONE SMARTPHONE':'VERSIONE COMPUTER';
 $('play').href=mobile?'./game-mobile.html':'./game.html';
-let promptInstall=null,preparing=false,jobs=[];
+let promptInstall=null,preparing=false,jobs=[],redirecting=false;
+function launchInstalledApp(){
+  if(redirecting)return;
+  redirecting=true;
+  location.replace(mobile?'./game-mobile.html':'./game.html');
+}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptInstall=e});
 window.addEventListener('appinstalled',()=>{$('status').textContent='Installazione completata'});
 function guide(){const msg=ios?'Su iPhone: apri in Safari, tocca Condividi e seleziona “Aggiungi alla schermata Home”, poi “Apri come app web” se disponibile.':android?'Su Android: apri il menu del browser (⋮) e scegli “Installa app” o “Aggiungi a schermata Home”.':'Su computer: in Chrome o Edge usa il menu del browser e scegli “Installa app” (o l’icona di installazione nella barra degli indirizzi).';$('instructions').textContent=msg;$('guide').hidden=false;}
@@ -74,19 +79,29 @@ function showActions(){
 }
 function showReadySimple(){
   $('stateBox').hidden=true;
+  $('actions').hidden=true;
+  $('retry').hidden=true;
   $('status').hidden=true;
-  showActions();
+  if(standalone())launchInstalledApp();
+  else showActions();
 }
 async function fetchJobs(){
-  const r=await fetch('./asset-list.json',{cache:'no-store'});
-  if(!r.ok)throw Error('Elenco dei file non trovato');
+  let r;
+  try{r=await fetch('./asset-list.json',{cache:'no-store'});}catch(e){}
+  if(!r||!r.ok)r=await caches.match('./asset-list.json');
+  if(!r||!r.ok)throw Error('Elenco dei file non trovato');
   const urls=await r.json();
   return [...new Set(['./asset-list.json',...urls])];
 }
 async function cacheIsReady(list){
   const cache=await caches.open(CACHE);
   for(const path of list){
-    const res=await cache.match(new Request(path));
+    const req=new Request(path);
+    let res=await cache.match(req);
+    if(!res){
+      res=await caches.match(req);
+      if(res&&res.ok)await cache.put(req,res.clone());
+    }
     if(!res)return false;
   }
   return true;
@@ -95,7 +110,7 @@ function fail(msg){preparing=false;$('stateBox').hidden=false;$('state').textCon
 async function run(){
   if(preparing)return;
   preparing=true;
-  $('retry').hidden=true; $('actions').hidden=true; $('status').hidden=false; $('status').textContent=''; $('stateBox').hidden=false;
+  $('retry').hidden=true; $('actions').hidden=true; $('status').hidden=false; $('status').textContent=''; $('stateBox').hidden=standalone();
   try{jobs=await fetchJobs()}catch(e){return fail(e.message)}
   if(!('caches' in window))return fail('Cache offline non disponibile in questo browser');
   try{
@@ -113,6 +128,7 @@ async function run(){
       return;
     }
   }catch(e){}
+  $('stateBox').hidden=false;
   $('state').textContent='Scaricamento pacchetti…';
   $('detail').textContent='Controllo di tutti i pacchetti';
   $('bar').value=0;
@@ -124,7 +140,11 @@ async function run(){
       try{
         const req=new Request(path);
         let res=await cache.match(req);
-        if(!res){res=await fetch(req,{cache:'reload'});if(!res.ok)throw Error(res.status);await cache.put(req,res.clone())}
+        if(!res){
+          res=await caches.match(req);
+          if(!res){res=await fetch(req,{cache:'reload'});if(!res.ok)throw Error(res.status)}
+          await cache.put(req,res.clone());
+        }
       }catch(e){errors.push(path)}
       count++; $('bar').value=Math.round(count/jobs.length*100); $('detail').textContent=count+' / '+jobs.length+' risorse controllate';
     }

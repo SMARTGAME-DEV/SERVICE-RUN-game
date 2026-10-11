@@ -581,17 +581,7 @@ const IMAGES = {};
       // SFX del titolo precaricato come elemento persistente; WebKit richiede
       // play() direttamente nello stesso evento touch, soprattutto dopo riapertura PWA.
       this.titleEnterGestureAt=0;
-      this.titleEnterAudio=new Audio();
-      this.titleEnterAudio.preload="auto";
-      this.titleEnterAudio.src=this.url("sfx_title_enter");
-      this.titleEnterAudio.volume=1;
-      this.titleEnterAudio.load();
-      this.prepareOfflineAudio("sfx_title_enter").then(url=>{
-        if(this.titleEnterAudio.paused && this.titleEnterAudio.src!==url){
-          this.titleEnterAudio.src=url;
-          this.titleEnterAudio.load();
-        }
-      }).catch(()=>{});
+      this.titleEnterVoices=new Set();
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
@@ -758,16 +748,32 @@ const IMAGES = {};
       if(!this.enabled)return;
       this.unlock();
       this.titleEnterGestureAt=performance.now();
-      // La chiamata play è sincrona rispetto al tocco dell'utente.
+      // Ogni pressione usa un elemento nuovo: su iOS riavviare un singolo
+      // elemento con pause/currentTime=0 può talvolta produrre silenzio.
+      // L'URL blob è già preparato dal preloader (anche offline).
+      const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
+      const a=new Audio(url);
+      a.preload="auto";
+      a.volume=1;
+      if(!this.titleEnterVoices)this.titleEnterVoices=new Set();
+      this.titleEnterVoices.add(a);
+      const release=()=>this.titleEnterVoices.delete(a);
+      a.addEventListener("ended",release,{once:true});
+      a.addEventListener("error",release,{once:true});
+      // Eseguito immediatamente nel gesto touch, senza attendere Promise.
       try{
-        const a=this.titleEnterAudio;
-        a.pause();a.currentTime=0;
-        const result=a.play();
-        if(result && result.catch) result.catch(()=>{
-          // Ripiego immediato su buffer, se pronto e sbloccato.
-          this.playSfx("sfx_title_enter",1);
+        const playing=a.play();
+        if(playing&&playing.catch)playing.catch(()=>{
+          release();
+          // WebAudio resta una seconda via solo se già attivo.
+          const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
+          if(ctx&&ctx.state==="running"&&buffer){
+            try{const source=ctx.createBufferSource();const gain=ctx.createGain();source.buffer=buffer;gain.gain.value=1.8;source.connect(gain);gain.connect(ctx.destination);source.start();source.onended=()=>{source.disconnect();gain.disconnect()}}catch(e){}
+          }
         });
-      }catch(err){this.playSfx("sfx_title_enter",1);}
+      }catch(e){release()}
+      // Non interrompere la voce di INVIO in resetForNewGame:
+      // l'effetto deve poter completare anche durante la transizione.
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;

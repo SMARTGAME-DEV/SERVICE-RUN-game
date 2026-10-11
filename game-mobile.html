@@ -70,9 +70,9 @@ b{font-weight:800}
     const mobile = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
     const availableW = Math.max(1, window.innerWidth - (mobile ? 0 : 24));
     const availableH = Math.max(1, window.innerHeight - (mobile ? 0 : 24));
-    const sceneName = document.body.dataset.mobileScene || "";
-    const gameplayZoom = mobile && /^(LEVEL|INTERIOR|SMARTGAS_INTERIOR|SECRET_CORRIDOR|SECRET_STOREROOM|TOWER2_ROOM|PAPA_TOWER2_SMALL_ROOM)$/.test(sceneName) ? 1.06 : 1;
-    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5) * gameplayZoom;
+    // Niente zoom/crop: adatta entrambi gli assi con lo stesso fattore.
+    // Il bordo libero residuo dipende dalle proporzioni fisiche del display.
+    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5);
     // Mantiene sempre le proporzioni native 1194:672. Mai stretching.
     canvas.style.width = Math.floor(GAME_W * scale) + "px";
     canvas.style.height = Math.floor(GAME_H * scale) + "px";
@@ -245,6 +245,7 @@ function syncPlayerSizeFromSprite(img){
     if(scene.name==='START')hit=(x>=350&&x<=845&&y>=490&&y<=672);
     if(!hit)return;
     audio.unlock();
+    if(scene.name==='START') audio.playTitleEnterGesture();
     mobileEnterFlashUntil=performance.now()+180;
     // Lo stato pressed è lo stesso che legge la tastiera originale nel tick.
     input.pressed.add('Enter');
@@ -577,6 +578,20 @@ const IMAGES = {};
         sfx_coffee_key_fanfare:"SMARTGAS-fanfara-chiavetta-caffe.wav",
         sfx_van_engine:"rumore-furgone-loop.wav"
       };
+      // SFX del titolo precaricato come elemento persistente; WebKit richiede
+      // play() direttamente nello stesso evento touch, soprattutto dopo riapertura PWA.
+      this.titleEnterGestureAt=0;
+      this.titleEnterAudio=new Audio();
+      this.titleEnterAudio.preload="auto";
+      this.titleEnterAudio.src=this.url("sfx_title_enter");
+      this.titleEnterAudio.volume=1;
+      this.titleEnterAudio.load();
+      this.prepareOfflineAudio("sfx_title_enter").then(url=>{
+        if(this.titleEnterAudio.paused && this.titleEnterAudio.src!==url){
+          this.titleEnterAudio.src=url;
+          this.titleEnterAudio.load();
+        }
+      }).catch(()=>{});
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
@@ -738,6 +753,21 @@ const IMAGES = {};
           }
         });
       }).catch(()=>{});
+    }
+    playTitleEnterGesture(){
+      if(!this.enabled)return;
+      this.unlock();
+      this.titleEnterGestureAt=performance.now();
+      // La chiamata play è sincrona rispetto al tocco dell'utente.
+      try{
+        const a=this.titleEnterAudio;
+        a.pause();a.currentTime=0;
+        const result=a.play();
+        if(result && result.catch) result.catch(()=>{
+          // Ripiego immediato su buffer, se pronto e sbloccato.
+          this.playSfx("sfx_title_enter",1);
+        });
+      }catch(err){this.playSfx("sfx_title_enter",1);}
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
@@ -1840,7 +1870,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
   function beginStartEnterFx(){
     if(startEnterFx.active || fade.dir!==0) return;
     startEnterFx.active=true;
-    audio.playSfx("sfx_title_enter",1);
+    if(performance.now()-audio.titleEnterGestureAt>650) audio.playSfx("sfx_title_enter",1);
     startEnterFx.startedAt=performance.now();
     startEnterFx.fadeStarted=false;
     startEnterFx.oldFadeSpeed=null;

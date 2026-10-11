@@ -1,9 +1,8 @@
 /* SMARTGASmed dual desktop/mobile - offline PWA */
-const CACHE='service-run-dual-v4-20261011-mobile12';
+const CACHE='service-run-dual-v5-20261011-mobile13';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{
   for(const key of await caches.keys()){
-    // Only our earlier mobile builds; do not delete unknown/desktop caches.
     if((key.startsWith('service-run-mobile-v1-')||key.startsWith('service-run-dual-'))&&key!==CACHE)await caches.delete(key);
   }
   await self.clients.claim();

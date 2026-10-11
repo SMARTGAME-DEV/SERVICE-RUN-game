@@ -7,7 +7,7 @@
   <style>
     html,body{margin:0;padding:0;height:100%;background:#0b0f14;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
     #wrap{display:flex;flex-direction:column;height:100%}
-    #game{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;box-sizing:border-box}
+    #game{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;box-sizing:border-box;overflow:hidden}
     canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#0b0f14;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.10)}
 b{font-weight:800}
   
@@ -22,7 +22,12 @@ b{font-weight:800}
  .touchKey.active{background:#238253f0;border-color:white}.touchKey[data-key="Space"]{font-size:clamp(9px,1.7vw,12px);letter-spacing:.02em}
  #rotateHint{display:none}
  #mobileNameHelp{display:none}
- body.mobile-keyboard #touchControls{display:none!important}
+ #mobileEnterWrap{display:none}
+ body.mobile-enter-only #touchControls{display:none!important}
+ body.mobile-enter-only #mobileEnterWrap{display:flex;position:fixed;left:0;right:0;bottom:max(18px,env(safe-area-inset-bottom));z-index:55;justify-content:center;pointer-events:none}
+ #mobileEnterButton{pointer-events:auto;appearance:none;-webkit-appearance:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;min-width:min(78vw,460px);max-width:88vw;padding:14px 22px;border-radius:12px;border:2px solid #32c46b;background:rgba(20,45,29,.88);color:#ffdf57;font:900 clamp(20px,3vw,30px) monospace;letter-spacing:.03em;box-shadow:0 0 0 1px rgba(0,0,0,.22) inset,0 6px 22px rgba(0,0,0,.35)}
+ #mobileEnterButton.active{transform:scale(.98);background:rgba(44,92,53,.96);box-shadow:0 0 0 2px rgba(255,255,255,.14) inset,0 0 18px rgba(255,223,87,.32)}
+ body.mobile-keyboard #touchControls, body.mobile-keyboard #mobileEnterWrap{display:none!important}
  body.mobile-keyboard #game{opacity:.7}
  body.mobile-keyboard #mobileNameHelp{display:block;position:fixed;left:0;right:0;bottom:0;z-index:1001;text-align:center;padding:7px;background:#11302a;color:#fff;font:14px system-ui}
 }
@@ -70,7 +75,9 @@ b{font-weight:800}
     const mobile = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
     const availableW = Math.max(1, window.innerWidth - (mobile ? 0 : 24));
     const availableH = Math.max(1, window.innerHeight - (mobile ? 0 : 24));
-    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5);
+    const sceneName = document.body.dataset.mobileScene || "";
+    const gameplayZoom = mobile && /^(LEVEL|INTERIOR|SMARTGAS_INTERIOR|SECRET_CORRIDOR|SECRET_STOREROOM|TOWER2_ROOM|PAPA_TOWER2_SMALL_ROOM)$/.test(sceneName) ? 1.06 : 1;
+    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5) * gameplayZoom;
     // Mantiene sempre le proporzioni native 1194:672. Mai stretching.
     canvas.style.width = Math.floor(GAME_W * scale) + "px";
     canvas.style.height = Math.floor(GAME_H * scale) + "px";
@@ -214,6 +221,39 @@ function syncPlayerSizeFromSprite(img){
   });
   window.addEventListener('blur',()=>{for(const id of [...touchHeld.keys()])releasePointer(id)});
 
+  const touchControlsEl = document.getElementById('touchControls');
+  const mobileEnterWrapEl = document.getElementById('mobileEnterWrap');
+  const mobileEnterButtonEl = document.getElementById('mobileEnterButton');
+  function isMobileTouchBuild(){
+    return matchMedia('(pointer:coarse) and (max-width:1100px)').matches;
+  }
+  function updateMobileUiState(){
+    if(!isMobileTouchBuild()) return;
+    const name = (typeof scene !== 'undefined' && scene && scene.name) ? scene.name : 'NOTICE';
+    document.body.dataset.mobileScene = name;
+    const enterOnly = (name === 'NOTICE' || name === 'START');
+    document.body.classList.toggle('mobile-enter-only', enterOnly);
+    if(touchControlsEl) touchControlsEl.style.display = enterOnly ? 'none' : 'block';
+    if(mobileEnterWrapEl && mobileEnterButtonEl){
+      mobileEnterWrapEl.hidden = !enterOnly;
+      mobileEnterButtonEl.textContent = name === 'NOTICE' ? 'PREMI INVIO PER CONTINUARE' : 'PREMI INVIO';
+    }
+    fitCanvas();
+  }
+  function mobileTapEnter(){
+    if(!mobileEnterButtonEl) return;
+    userGesture();
+    mobileEnterButtonEl.classList.add('active');
+    setTimeout(()=>mobileEnterButtonEl.classList.remove('active'),130);
+    touchEvent('Enter','keydown');
+    setTimeout(()=>touchEvent('Enter','keyup'),40);
+  }
+  if(mobileEnterButtonEl){
+    mobileEnterButtonEl.addEventListener('pointerdown',e=>{e.preventDefault();userGesture();mobileEnterButtonEl.classList.add('active')},{passive:false});
+    mobileEnterButtonEl.addEventListener('pointerup',e=>{e.preventDefault();mobileTapEnter()},{passive:false});
+    mobileEnterButtonEl.addEventListener('pointercancel',()=>mobileEnterButtonEl.classList.remove('active'));
+    mobileEnterButtonEl.addEventListener('contextmenu',e=>e.preventDefault());
+  }
 
   // ====== Segreto: 10 pressioni consecutive E = recupera 1 vita (max 3) ======
   let lifeESecretCount = 0;
@@ -1661,6 +1701,7 @@ function resetGame() {
     if (name !== "LEVEL") audio.syncVanEngine(false);
     if (name === "WIN" || name === "LOSE") audio.stopMusic();
     else audio.syncMusic();
+    updateMobileUiState();
   }
 
   // ====== START screen (preserva menu iniziale in codice) ======
@@ -9737,6 +9778,7 @@ const statsText = "Score: " + punteggio +
   }
 
 function tick() {
+    updateMobileUiState();
     const frameClockNow = performance.now();
     frameDeltaSec = Math.max(0, Math.min(0.10, (frameClockNow - lastFrameClockMs) / 1000));
     lastFrameClockMs = frameClockNow;

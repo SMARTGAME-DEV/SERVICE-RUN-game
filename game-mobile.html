@@ -14,7 +14,7 @@ b{font-weight:800}
 /* SMARTGASmed responsive touch pad, desktop unchanged */
 #touchControls,#rotateHint{display:none}
 @media (pointer:coarse) and (max-width:1100px){
- html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto}
+ html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto;flex:none;max-width:none;max-height:none}
  #touchControls{display:block;position:fixed;inset:0;z-index:40;pointer-events:none;user-select:none;-webkit-user-select:none}
  .touchCross{position:absolute;bottom:max(8px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(3,var(--btn));grid-template-rows:repeat(3,var(--btn));gap:4px;pointer-events:none;--btn:clamp(34px,min(9vw,13vh),58px)}
  .touchCross.left{left:max(8px,env(safe-area-inset-left))}.touchCross.right{right:max(8px,env(safe-area-inset-right))}
@@ -35,12 +35,21 @@ b{font-weight:800}
 </div>
 
 <div id="touchControls" aria-label="Pulsanti touchscreen">
-<div class="touchCross left"><button class="touchKey" style="grid-area:1/2" data-key="Enter">INVIO</button><button class="touchKey" style="grid-area:2/1" data-key="ArrowLeft">◀</button><button class="touchKey" style="grid-area:2/3" data-key="ArrowRight">▶</button><button class="touchKey" style="grid-area:3/2" data-key="Space">SALTA</button></div>
-<div class="touchCross right"><button class="touchKey" style="grid-area:1/2" data-key="KeyR">R</button><button class="touchKey" style="grid-area:2/1" data-key="KeyP">P</button><button class="touchKey" style="grid-area:2/3" data-key="KeyE">E</button><button class="touchKey" style="grid-area:3/2" data-key="KeyF">F</button></div></div>
+<div class="touchCross left"><button class="touchKey" style="grid-area:1/2" data-key="Enter">INVIO</button><button class="touchKey" style="grid-area:2/1" data-key="ArrowLeft">◀</button><button class="touchKey" style="grid-area:2/3" data-key="ArrowRight">▶</button><button class="touchKey" style="grid-area:3/2" data-key="KeyP">P</button></div>
+<div class="touchCross right"><button class="touchKey" style="grid-area:1/2" data-key="KeyR">R</button><button class="touchKey" style="grid-area:2/1" data-key="Space">SALTA</button><button class="touchKey" style="grid-area:2/3" data-key="KeyE">E</button><button class="touchKey" style="grid-area:3/2" data-key="KeyF">F</button></div></div>
 <div id="rotateHint">↻&nbsp; Ruota il telefono in orizzontale</div><div id="mobileNameHelp">Scrivi il nome con la tastiera e conferma con INVIO</div>
+<div id="mobileInstallGate" style="display:none;position:fixed;inset:0;z-index:9999;background:#0b1018;color:#f0fff4;font:600 19px system-ui;align-items:center;justify-content:center;text-align:center;padding:28px;flex-direction:column;gap:16px"><strong>SMARTGASmed – SERVICE RUN</strong><span>Per giocare su smartphone, installa il gioco dalla schermata iniziale.</span><a href="./index.html" style="background:#53d68b;color:#062418;text-decoration:none;border-radius:12px;padding:14px 22px">TORNA ALL’INSTALLAZIONE</a></div>
 <script>
 (() => {
   "use strict";
+  const mobileEnvironment = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || matchMedia('(pointer:coarse) and (max-width:1100px)').matches;
+  const installedEnvironment = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (mobileEnvironment && !installedEnvironment) {
+    document.getElementById('mobileInstallGate').style.display = 'flex';
+    document.getElementById('wrap').style.display = 'none';
+    document.getElementById('touchControls').style.display = 'none';
+    return;
+  }
 
   // ====== Canvas ======
   const canvas = document.getElementById("c");
@@ -58,19 +67,13 @@ b{font-weight:800}
   // Ridimensiona soltanto la PRESENTAZIONE, mai la superficie logica.
   // Conserva le proporzioni senza deformazioni; nessun reset del canvas al resize.
   function fitCanvas() {
-    const coarse = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
-    const availableW = Math.max(1, window.innerWidth - (coarse ? 0 : 24));
-    const availableH = Math.max(1, window.innerHeight - (coarse ? 0 : 24));
-    if (coarse && window.innerWidth > window.innerHeight) {
-      // Riempie tutto il viewport orizzontale senza tagliare HUD o bordo del livello.
-      // Lo stiramento orizzontale è temporaneo finché non ridisegniamo la camera widescreen.
-      canvas.style.width = Math.ceil(availableW) + "px";
-      canvas.style.height = Math.ceil(availableH) + "px";
-    } else {
-      const scale = Math.min(availableW / GAME_W, availableH / GAME_H, 1.5);
-      canvas.style.width = Math.floor(GAME_W * scale) + "px";
-      canvas.style.height = Math.floor(GAME_H * scale) + "px";
-    }
+    const mobile = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
+    const availableW = Math.max(1, window.innerWidth - (mobile ? 0 : 24));
+    const availableH = Math.max(1, window.innerHeight - (mobile ? 0 : 24));
+    const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5);
+    // Mantiene sempre le proporzioni native 1194:672. Mai stretching.
+    canvas.style.width = Math.floor(GAME_W * scale) + "px";
+    canvas.style.height = Math.floor(GAME_H * scale) + "px";
   }
   window.addEventListener("resize", fitCanvas);
   window.addEventListener("orientationchange",()=>setTimeout(fitCanvas,180));
@@ -591,7 +594,7 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : this.musicVolume;
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .13 : this.musicVolume);
     }
     refreshMusicVolume(){
       for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);
@@ -688,7 +691,7 @@ const IMAGES = {};
         const a=new Audio();
         a.preload="auto";
         a.src=url;
-        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume));
+        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(2.2,this.sfxVolume*volume*(key==="sfx_title_enter"?1.8:1)));
         if(key==="sfx_coffee_key_fanfare"){
           this.coffeeFanfarePlaying=true;
           this.refreshMusicVolume();
@@ -722,7 +725,7 @@ const IMAGES = {};
       const source=context.createBufferSource();
       const gain=context.createGain();
       source.buffer=buffer;
-      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume));
+      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(2.2,this.sfxVolume*volume*(key==="sfx_title_enter"?1.8:1)));
       source.connect(gain);gain.connect(context.destination);
       if(key==="sfx_coffee_key_fanfare"){
         this.coffeeFanfarePlaying=true;

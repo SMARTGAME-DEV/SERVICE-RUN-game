@@ -619,6 +619,7 @@ const IMAGES = {};
       // play() direttamente nello stesso evento touch, soprattutto dopo riapertura PWA.
       this.titleEnterGestureAt=0;
       this.titleEnterVoices=new Set();
+      this.titleEnterReady=null;
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
@@ -701,6 +702,35 @@ const IMAGES = {};
         }
       };
       for(let i=0;i<Math.min(3,keys.length);i++)worker();
+    }
+    prepareTitleEnter(){
+      if(this.sfxBuffers.has("sfx_title_enter"))return Promise.resolve(this.sfxBuffers.get("sfx_title_enter"));
+      if(this.titleEnterReady)return this.titleEnterReady;
+      const ctx=this.sfxContext;
+      if(!ctx)return Promise.reject(new Error("WebAudio non disponibile"));
+      // Prepara il suono dalla cache PWA fin dall'apertura, senza aspettare la
+      // coda di decodifica degli altri effetti o una seconda partita.
+      this.titleEnterReady=this.prepareOfflineAudio("sfx_title_enter")
+        .then(async url=>{
+          const response=await fetch(url);
+          if(!response.ok)throw new Error("INVIO non disponibile: "+response.status);
+          const decoded=await ctx.decodeAudioData(await response.arrayBuffer());
+          this.sfxBuffers.set("sfx_title_enter",decoded);
+          return decoded;
+        }).catch(error=>{this.titleEnterReady=null;throw error;});
+      return this.titleEnterReady;
+    }
+    playTitleEnterAmplified(buffer){
+      const ctx=this.sfxContext;
+      if(!ctx||ctx.state!=="running"||!buffer)return false;
+      const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
+      limiter.threshold.value=-12;limiter.knee.value=6;limiter.ratio.value=8;
+      limiter.attack.value=.003;limiter.release.value=.13;
+      source.buffer=buffer;gain.gain.value=1.65;
+      source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
+      source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
+      source.start(0);
+      return true;
     }
     unlock(){
       const firstUnlock=!this._unlocked;
@@ -785,30 +815,28 @@ const IMAGES = {};
       if(!this.enabled)return;
       this.unlock();
       this.titleEnterGestureAt=performance.now();
-      // Ogni pressione usa un elemento nuovo: su iOS riavviare un singolo
-      // elemento con pause/currentTime=0 può talvolta produrre silenzio.
-      // L'URL blob è già preparato dal preloader (anche offline).
-      // Su WebAudio il suono INVIO può essere amplificato oltre il limite 1.0
-      // degli elementi HTMLAudio. Il compressore evita picchi eccessivi.
-      const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
-      if(ctx && ctx.state==="running" && buffer){
-        try{
-          const source=ctx.createBufferSource();
-          const gain=ctx.createGain();
-          const limiter=ctx.createDynamicsCompressor();
-          limiter.threshold.value=-12;
-          limiter.knee.value=6;
-          limiter.ratio.value=8;
-          limiter.attack.value=.003;
-          limiter.release.value=.13;
-          source.buffer=buffer;
-          gain.gain.value=1.65;
-          source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
-          source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
-          source.start(0);
-          return;
-        }catch(error){console.warn("INVIO WebAudio: fallback HTMLAudio",error)}
+      const ctx=this.sfxContext;
+      const buffer=this.sfxBuffers.get("sfx_title_enter");
+      if(ctx){
+        if(buffer&&ctx.state==="running"){
+          try{if(this.playTitleEnterAmplified(buffer))return;}catch(error){console.warn("INVIO WebAudio:",error);}
+        }
+        // Il tocco della schermata con le frasi ha già autorizzato l'audio.
+        // Se la decodifica o il resume non sono finiti, aspettiamo WebAudio
+        // invece di usare HTMLAudio a volume più basso solo al primo INVIO.
+        const ready=this.prepareTitleEnter();
+        Promise.all([ready,ctx.state==="running"?Promise.resolve():ctx.resume()])
+          .then(([decoded])=>{
+            if(!this.enabled)return;
+            if(!this.playTitleEnterAmplified(decoded))this.playSfxFallback("sfx_title_enter",1);
+          })
+          .catch(error=>{
+            console.warn("INVIO amplificato non disponibile:",error);
+            this.playSfxFallback("sfx_title_enter",1);
+          });
+        return;
       }
+      // Solo dispositivi senza AudioContext: riproduzione standard.
       const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
       const a=new Audio(url);
       a.preload="auto";
@@ -946,6 +974,7 @@ const audio = new AudioManager();
 
   function userGesture() {
     audio.unlock();
+    if(scene.name==="NOTICE")audio.prepareTitleEnter().catch(()=>{});
     if(audio.sfxContext && audio.sfxContext.state!=="running"){
       audio.sfxContext.resume().catch(()=>{});
     }

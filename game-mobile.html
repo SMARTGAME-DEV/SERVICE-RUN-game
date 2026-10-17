@@ -635,7 +635,7 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .085 : this.musicVolume);
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .085 : (key==="music_level" || key==="music_interior") ? .22 : this.musicVolume);
     }
     refreshMusicVolume(){
       for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);

@@ -203,20 +203,55 @@ function syncPlayerSizeFromSprite(img){
   const input = new Input();
   // Multitouch: invia eventi tastiera REALI, per mantenere anche i segreti E/F e tutti i menu.
   // Separate tracking of pointers avoids releasing another finger's key.
+  // Gestione indipendente da posizione e grafica dei tasti: compatibile con futuri layout.
   const touchHeld = new Map();
+  const virtualKeysDown = new Set();
   function touchEvent(key,type){
     const ev=new KeyboardEvent(type,{code:key,key:({Space:' ',Enter:'Enter',ArrowLeft:'ArrowLeft',ArrowRight:'ArrowRight',KeyP:'p',KeyR:'r',KeyE:'e',KeyF:'f'})[key]||key,bubbles:true,cancelable:true});
     window.dispatchEvent(ev);
   }
-  function releasePointer(id){const b=touchHeld.get(id);if(!b)return;touchHeld.delete(id);const k=b.dataset.key;if(![...touchHeld.values()].some(v=>v.dataset.key===k)){touchEvent(k,'keyup');b.classList.remove('active')}}
+  function releasePointer(id){
+    const b=touchHeld.get(id);
+    if(!b)return;
+    touchHeld.delete(id);
+    const key=b.dataset.key;
+    if(![...touchHeld.values()].some(v=>v.dataset.key===key)){
+      virtualKeysDown.delete(key);
+      touchEvent(key,'keyup');
+      b.classList.remove('active');
+    }
+  }
+  function releaseAllTouchKeys(){
+    // Usa anche virtualKeysDown: corregge eventuali tocchi persi dalla mappa iOS.
+    const keys=new Set([...virtualKeysDown,...[...touchHeld.values()].map(b=>b.dataset.key)]);
+    touchHeld.clear();
+    virtualKeysDown.clear();
+    for(const key of keys){touchEvent(key,'keyup');input.down.delete(key);}
+    document.querySelectorAll('#touchControls .touchKey.active').forEach(b=>b.classList.remove('active'));
+  }
   document.querySelectorAll('#touchControls .touchKey').forEach(b=>{
-    b.addEventListener('pointerdown',e=>{e.preventDefault();if(leaderboardOpen&&leaderboardMode==='NAME')return;
-      const k=b.dataset.key;if(![...touchHeld.values()].some(v=>v.dataset.key===k))touchEvent(k,'keydown');touchHeld.set(e.pointerId,b);b.classList.add('active');try{b.setPointerCapture(e.pointerId)}catch(_){};
+    b.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      if(leaderboardOpen&&leaderboardMode==='NAME')return;
+      // iOS può riciclare un pointerId dopo un evento di rilascio perso.
+      if(touchHeld.has(e.pointerId))releasePointer(e.pointerId);
+      const key=b.dataset.key;
+      if(!virtualKeysDown.has(key)){
+        virtualKeysDown.add(key);
+        touchEvent(key,'keydown');
+      }
+      touchHeld.set(e.pointerId,b);
+      b.classList.add('active');
+      try{b.setPointerCapture(e.pointerId)}catch(_){}
     },{passive:false});
     ['pointerup','pointercancel','lostpointercapture'].forEach(type=>b.addEventListener(type,e=>releasePointer(e.pointerId)));
     b.addEventListener('contextmenu',e=>e.preventDefault());
   });
-  window.addEventListener('blur',()=>{for(const id of [...touchHeld.keys()])releasePointer(id)});
+  // Rilascio globale: funziona anche se il dito termina fuori dal pulsante.
+  ['pointerup','pointercancel'].forEach(type=>window.addEventListener(type,e=>releasePointer(e.pointerId),{capture:true,passive:true}));
+  window.addEventListener('blur',releaseAllTouchKeys);
+  window.addEventListener('pagehide',releaseAllTouchKeys);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAllTouchKeys()});
 
   const touchControlsEl = document.getElementById('touchControls');
   let lastMobileScene = '';
@@ -1590,6 +1625,7 @@ function triggerTimeOutLoseFix134() {
 }
 
 function resetGame() {
+    releaseAllTouchKeys(); // R azzera ogni tasto virtuale rimasto premuto
     opening.leaving=false;
     opening.revealStartedAt=0;
     gamePaused=false;
@@ -1770,6 +1806,7 @@ function resetGame() {
     set(name){ this.name=name; },
   };
   function setScene(name) {
+    if(scene.name!==name)releaseAllTouchKeys();
     scene.set(name);
     if (name !== "LEVEL") audio.syncVanEngine(false);
     if (name === "WIN" || name === "LOSE") audio.stopMusic();

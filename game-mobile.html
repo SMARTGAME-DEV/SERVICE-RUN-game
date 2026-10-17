@@ -282,7 +282,6 @@ function syncPlayerSizeFromSprite(img){
     if(scene.name==='START')hit=(x>=350&&x<=845&&y>=490&&y<=672);
     if(!hit)return;
     audio.unlock();
-    if(scene.name==='START') audio.playTitleEnterGesture();
     mobileEnterFlashUntil=performance.now()+180;
     // Lo stato pressed è lo stesso che legge la tastiera originale nel tick.
     input.pressed.add('Enter');
@@ -703,35 +702,6 @@ const IMAGES = {};
       };
       for(let i=0;i<Math.min(3,keys.length);i++)worker();
     }
-    prepareTitleEnter(){
-      if(this.sfxBuffers.has("sfx_title_enter"))return Promise.resolve(this.sfxBuffers.get("sfx_title_enter"));
-      if(this.titleEnterReady)return this.titleEnterReady;
-      const ctx=this.sfxContext;
-      if(!ctx)return Promise.reject(new Error("WebAudio non disponibile"));
-      // Prepara il suono dalla cache PWA fin dall'apertura, senza aspettare la
-      // coda di decodifica degli altri effetti o una seconda partita.
-      this.titleEnterReady=this.prepareOfflineAudio("sfx_title_enter")
-        .then(async url=>{
-          const response=await fetch(url);
-          if(!response.ok)throw new Error("INVIO non disponibile: "+response.status);
-          const decoded=await ctx.decodeAudioData(await response.arrayBuffer());
-          this.sfxBuffers.set("sfx_title_enter",decoded);
-          return decoded;
-        }).catch(error=>{this.titleEnterReady=null;throw error;});
-      return this.titleEnterReady;
-    }
-    playTitleEnterAmplified(buffer){
-      const ctx=this.sfxContext;
-      if(!ctx||ctx.state!=="running"||!buffer)return false;
-      const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
-      limiter.threshold.value=-12;limiter.knee.value=6;limiter.ratio.value=8;
-      limiter.attack.value=.003;limiter.release.value=.13;
-      source.buffer=buffer;gain.gain.value=1.65;
-      source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
-      source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
-      source.start(0);
-      return true;
-    }
     unlock(){
       const firstUnlock=!this._unlocked;
       this._unlocked=true;
@@ -811,58 +781,49 @@ const IMAGES = {};
         });
       }).catch(()=>{});
     }
+    // Un solo riproduttore INVIO, sia al primo avvio sia dopo R.
+    // L'elemento viene preparato in anticipo, non generato dentro il tocco.
+    prepareTitleButtonSound(){
+      if(this.titleButtonAudio)return;
+      const voice=new Audio(this.url("sfx_title_enter"));
+      voice.preload="auto";
+      voice.volume=1;
+      this.titleButtonAudio=voice;
+      try{voice.load();}catch(_){}
+      const ctx=this.sfxContext;
+      if(ctx){
+        try{
+          const source=ctx.createMediaElementSource(voice);
+          const gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
+          gain.gain.value=1.65;
+          limiter.threshold.value=-12; limiter.knee.value=6;
+          limiter.ratio.value=8; limiter.attack.value=.003; limiter.release.value=.13;
+          source.connect(gain); gain.connect(limiter); limiter.connect(ctx.destination);
+          this.titleButtonAudioGraph=true;
+        }catch(error){console.warn("Audio INVIO diretto:",error);}
+      }
+    }
     playTitleEnterGesture(){
       if(!this.enabled)return;
       this.unlock();
-      this.titleEnterGestureAt=performance.now();
-      // NESSUNA coda asincrona: il suono parte ora o non parte affatto.
-      // Le promesse di caricamento possono terminare dopo R, causando l'eco tardiva.
-      const ctx=this.sfxContext;
-      const buffer=this.sfxBuffers.get("sfx_title_enter");
-      if(ctx && ctx.state==="running" && buffer){
-        try{if(this.playTitleEnterAmplified(buffer))return;}
-        catch(error){console.warn("INVIO WebAudio:",error);}
+      this.prepareTitleButtonSound();
+      const voice=this.titleButtonAudio;
+      // Nessuna promessa di preparazione con play() ritardato, nessun accumulo.
+      if(!voice)return;
+      try{voice.pause();voice.currentTime=0;}catch(_){}
+      // Se il contesto è ancora sospeso, usa il canale HTML immediato
+      // invece di accodare un suono che partirà dopo R.
+      if(this.titleButtonAudioGraph && this.sfxContext?.state!=="running"){
+        const fallback=new Audio(this.offlineAudioUrls.get("sfx_title_enter")||this.url("sfx_title_enter"));
+        fallback.volume=1;
+        this.titleEnterVoices.add(fallback);
+        const cleanup=()=>this.titleEnterVoices.delete(fallback);
+        fallback.addEventListener("ended",cleanup,{once:true});
+        fallback.addEventListener("error",cleanup,{once:true});
+        try{fallback.play()?.catch(cleanup);}catch(_){cleanup();}
+        return;
       }
-      // Riproduzione immediata direttamente nel gesto: nessun .then() che
-      // possa riavviare il suono dopo una transizione o un reset.
-      const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
-      const voice=new Audio(url);
-      voice.preload="auto";
-      voice.volume=1;
-      // Percorso alternativo amplificato: quando Web Audio è già attivo ma
-      // il buffer non è ancora pronto, il media element usa lo STESSO guadagno
-      // dell'INVIO decodificato. Nessun await / then prima del play().
-      let mediaSource=null, mediaGain=null, mediaLimiter=null;
-      if(ctx && ctx.state==="running"){
-        try{
-          mediaSource=ctx.createMediaElementSource(voice);
-          mediaGain=ctx.createGain();
-          mediaLimiter=ctx.createDynamicsCompressor();
-          mediaGain.gain.value=1.65;
-          mediaLimiter.threshold.value=-12;
-          mediaLimiter.knee.value=6;
-          mediaLimiter.ratio.value=8;
-          mediaLimiter.attack.value=.003;
-          mediaLimiter.release.value=.13;
-          mediaSource.connect(mediaGain);
-          mediaGain.connect(mediaLimiter);
-          mediaLimiter.connect(ctx.destination);
-        }catch(error){
-          console.warn("Amplificazione INVIO alternativa non disponibile:",error);
-          try{mediaSource?.disconnect();mediaGain?.disconnect();mediaLimiter?.disconnect()}catch(_){}
-        }
-      }
-      this.titleEnterVoices.add(voice);
-      const release=()=>{
-        this.titleEnterVoices.delete(voice);
-        try{mediaSource?.disconnect();mediaGain?.disconnect();mediaLimiter?.disconnect()}catch(_){}
-      };
-      voice.addEventListener("ended",release,{once:true});
-      voice.addEventListener("error",release,{once:true});
-      try{
-        const playing=voice.play();
-        if(playing && playing.catch)playing.catch(()=>release());
-      }catch(error){release();}
+      try{voice.play()?.catch(()=>{});}catch(_){}
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
@@ -952,6 +913,7 @@ const IMAGES = {};
       // Chiudi eventuali voci INVIO rimaste dalla partita precedente.
       for(const voice of this.titleEnterVoices){try{voice.pause();voice.currentTime=0;}catch(e){}}
       this.titleEnterVoices.clear();
+      if(this.titleButtonAudio){try{this.titleButtonAudio.pause();this.titleButtonAudio.currentTime=0;}catch(_){}}
       this.titleEnterGestureAt=0;
       this.syncVanEngine(false);
       this.stopMusic();
@@ -972,6 +934,7 @@ const IMAGES = {};
     }
   }
 const audio = new AudioManager();
+  audio.prepareTitleButtonSound();
 
   // Clock reale del frame: il gioco originale assumeva implicitamente 60 FPS.
   // Se il rendering scendeva sotto 60 FPS, timer e movimento rallentavano insieme.
@@ -981,7 +944,7 @@ const audio = new AudioManager();
 
   function userGesture() {
     audio.unlock();
-    if(scene.name==="NOTICE")audio.prepareTitleEnter().catch(()=>{});
+    if(scene.name==="NOTICE")audio.prepareTitleButtonSound();
     if(audio.sfxContext && audio.sfxContext.state!=="running"){
       audio.sfxContext.resume().catch(()=>{});
     }
@@ -1992,7 +1955,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
   function beginStartEnterFx(){
     if(startEnterFx.active || fade.dir!==0) return;
     startEnterFx.active=true;
-    if(performance.now()-audio.titleEnterGestureAt>650) audio.playSfx("sfx_title_enter",1);
+    audio.playTitleEnterGesture();
     startEnterFx.startedAt=performance.now();
     startEnterFx.fadeStarted=false;
     startEnterFx.oldFadeSpeed=null;

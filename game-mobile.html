@@ -281,8 +281,8 @@ function syncPlayerSizeFromSprite(img){
     if(scene.name==='NOTICE')hit=(x>=360&&x<=835&&y>=535&&y<=668);
     if(scene.name==='START')hit=(x>=350&&x<=845&&y>=490&&y<=672);
     if(!hit)return;
-    if(scene.name==='NOTICE') { audio.unlock(); audio.playTitleEnterGesture(); }
-    else { audio.unlock(); audio.playTitleEnterGesture(); }
+    // Suono INVIO gestito solo qui, nel gesto reale; la scena non lo ripete.
+    audio.playTitleEnterGesture();
     mobileEnterFlashUntil=performance.now()+180;
     // Lo stato pressed è lo stesso che legge la tastiera originale nel tick.
     input.pressed.add('Enter');
@@ -617,6 +617,7 @@ const IMAGES = {};
       };
       // SFX del titolo precaricato come elemento persistente; WebKit richiede
       // play() direttamente nello stesso evento touch, soprattutto dopo riapertura PWA.
+      this.titleEnterGain=1.65; // Volume scelto per INVIO: 165%, mantenuto.
       this.titleEnterGestureAt=0;
       this.titleEnterVoices=new Set();
       this.titleEnterReady=null;
@@ -726,7 +727,7 @@ const IMAGES = {};
       const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
       limiter.threshold.value=-12;limiter.knee.value=6;limiter.ratio.value=8;
       limiter.attack.value=.003;limiter.release.value=.13;
-      source.buffer=buffer;gain.gain.value=1.65;
+      source.buffer=buffer;gain.gain.value=this.titleEnterGain;
       source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
       source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
       source.start(0);
@@ -1014,6 +1015,14 @@ const audio = new AudioManager();
   addEventListener("touchstart", userGesture, {passive:true});
   // Qualsiasi tasto sblocca l'audio: non è più necessario cliccare sul gioco.
   addEventListener("keydown", userGesture, {passive:true});
+  // Tastiera fisica: stesso identico percorso dell'INVIO touchscreen.
+  // Il tick si occupa SOLO della transizione, mai di riprodurre il suono.
+  addEventListener('keydown', event=>{
+    if(event.code!=='Enter'||event.repeat)return;
+    if(scene.name!=='NOTICE' && scene.name!=='START')return;
+    if(leaderboardOpen && leaderboardMode==='NAME')return;
+    audio.playTitleEnterGesture();
+  },{passive:true});
   // Tornando nell'app dopo inattività lunga, riattiva gli SFX al primo gesto.
   document.addEventListener('visibilitychange',()=>{
     if(!document.hidden && audio && audio.sfxContext && audio.sfxContext.state!=="running"){
@@ -2015,7 +2024,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
   function beginStartEnterFx(){
     if(startEnterFx.active || fade.dir!==0) return;
     startEnterFx.active=true;
-    if(performance.now()-audio.titleEnterGestureAt>650) audio.playSfx("sfx_title_enter",1);
+    // L'effetto INVIO viene riprodotto dall'evento di pressione, non dall'animazione.
     startEnterFx.startedAt=performance.now();
     startEnterFx.fadeStarted=false;
     startEnterFx.oldFadeSpeed=null;
@@ -10104,8 +10113,7 @@ function tick() {
     if(scene.name === "NOTICE"){
       drawOpeningNotice();
       if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
-        // Per la tastiera fisica riproduce lo stesso effetto; su touch il suono e gia partito nel pointerdown.
-        if(performance.now()-audio.titleEnterGestureAt>650) audio.playTitleEnterGesture();
+        // L'audio INVIO e gia stato riprodotto durante il gesto utente.
         opening.leaving=true;
         fade.start(true,()=>{
           opening.revealStartedAt=performance.now();

@@ -635,7 +635,7 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .115 : this.musicVolume);
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .085 : this.musicVolume);
     }
     refreshMusicVolume(){
       for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);
@@ -732,7 +732,7 @@ const IMAGES = {};
         const a=new Audio();
         a.preload="auto";
         a.src=url;
-        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.65:key==="sfx_select"?1.35:key==="sfx_logo"?1.45:1)));
+        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.9:key==="sfx_select"?1.9:key==="sfx_logo"?1.95:1)));
         if(key==="sfx_coffee_key_fanfare"){
           this.coffeeFanfarePlaying=true;
           this.refreshMusicVolume();
@@ -753,6 +753,27 @@ const IMAGES = {};
       // Ogni pressione usa un elemento nuovo: su iOS riavviare un singolo
       // elemento con pause/currentTime=0 può talvolta produrre silenzio.
       // L'URL blob è già preparato dal preloader (anche offline).
+      // Su WebAudio il suono INVIO può essere amplificato oltre il limite 1.0
+      // degli elementi HTMLAudio. Il compressore evita picchi eccessivi.
+      const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
+      if(ctx && ctx.state==="running" && buffer){
+        try{
+          const source=ctx.createBufferSource();
+          const gain=ctx.createGain();
+          const limiter=ctx.createDynamicsCompressor();
+          limiter.threshold.value=-12;
+          limiter.knee.value=6;
+          limiter.ratio.value=8;
+          limiter.attack.value=.003;
+          limiter.release.value=.13;
+          source.buffer=buffer;
+          gain.gain.value=1.65;
+          source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
+          source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
+          source.start(0);
+          return;
+        }catch(error){console.warn("INVIO WebAudio: fallback HTMLAudio",error)}
+      }
       const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
       const a=new Audio(url);
       a.preload="auto";
@@ -797,7 +818,7 @@ const IMAGES = {};
       const source=context.createBufferSource();
       const gain=context.createGain();
       source.buffer=buffer;
-      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.65:key==="sfx_select"?1.35:key==="sfx_logo"?1.45:1)));
+      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min((key==="sfx_title_enter"||key==="sfx_select"||key==="sfx_logo")?1.65:1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.9:key==="sfx_select"?1.9:key==="sfx_logo"?1.95:1)));
       source.connect(gain);gain.connect(context.destination);
       if(key==="sfx_coffee_key_fanfare"){
         this.coffeeFanfarePlaying=true;

@@ -12,6 +12,7 @@
 <title>SMARTGASmed – SERVICE RUN</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:18px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:radial-gradient(ellipse at 50% 10%,#1b3b39,#101820 65%);color:#eaf7ef}.panel{width:min(100%,570px);text-align:center;background:#111d27;border:1px solid #396653;border-radius:20px;padding:clamp(20px,4vw,38px);box-shadow:0 20px 70px #0009}small{letter-spacing:.12em;color:#86d8a7}h1{font-size:clamp(29px,6vw,44px);margin:12px 0 8px}.sub{color:#bed2c7}progress{width:100%;height:17px;accent-color:#53d68b}#detail,#status{font-size:13px;color:#b2cfc2;line-height:1.5;min-height:30px}.box{background:#0c1921;border:1px solid #325344;padding:17px;border-radius:12px;margin:22px 0}.actions{display:grid;gap:11px}.actions[hidden]{display:none!important}.btn{display:block;width:100%;border-radius:11px;border:2px solid #53d68b;padding:15px;text-decoration:none;font:900 16px system-ui;cursor:pointer}.play{background:#53d68b;color:#0b2419}.install{background:transparent;color:#baf8d2}.btn[hidden],.box[hidden],#status[hidden],#retry[hidden],#guide[hidden]{display:none!important}#guide{text-align:left;margin-top:17px;line-height:1.6;color:#d5e8dc}#guide button{margin-top:9px;padding:9px;border-radius:8px}a{color:inherit}#rotateApp{display:none}.standalone-mobile #rotateApp{display:none}@media(max-width:700px){.panel{padding:20px}}@media (orientation:portrait){body.standalone-mobile #rotateApp{display:flex;position:fixed;inset:0;z-index:50;background:rgba(7,23,32,.97);align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:28px;font:700 24px system-ui}body.standalone-mobile #rotateApp span{font-size:54px;margin-bottom:14px}body.standalone-mobile .panel{opacity:.16;pointer-events:none}}
+body.standalone-mobile #footerNote{display:none}body.standalone-mobile #subtitle{font-size:clamp(15px,3vw,19px)}
 </style>
 </head>
 <body>
@@ -19,7 +20,7 @@
 <main class="panel">
   <small id="device">SERVICE RUN</small>
   <h1>SMARTGASmed</h1>
-  <p class="sub" id="subtitle">SERVICE RUN · Gioca oppure installa l'app</p>
+  <p class="sub" id="subtitle">SERVICE RUN · Preparazione delle risorse</p>
   <div class="box" id="stateBox">
     <strong id="state">Preparazione del gioco…</strong>
     <p><progress id="bar" max="100" value="0"></progress></p>
@@ -32,7 +33,7 @@
   <button id="retry" class="btn install" hidden>RIPROVA IL DOWNLOAD</button>
   <p id="status" aria-live="polite"></p>
   <div id="guide" class="box" hidden><strong>Installazione sul dispositivo</strong><p id="instructions"></p><button id="close">Chiudi</button></div>
-  <small id="footerNote">L'installazione è facoltativa. La classifica online richiede Internet; il resto del gioco può funzionare offline dopo il caricamento completo.</small>
+  <small id="footerNote">Su smartphone è necessario installare l'app. Il gioco funziona offline dopo il download completo; la TOP 100 online richiede una connessione.</small>
 </main>
 <script>
 (()=>{'use strict';
@@ -47,6 +48,8 @@ const body=document.body;
  function syncRotateLoad(){const src=document.getElementById('stateBox'),dst=document.getElementById('rotateLoad');dst.hidden=src.hidden;document.getElementById('rotateState').textContent=document.getElementById('state').textContent;document.getElementById('rotateBar').value=document.getElementById('bar').value;document.getElementById('rotateDetail').textContent=document.getElementById('detail').textContent;}
  const rotateObserver=new MutationObserver(syncRotateLoad);rotateObserver.observe(document.getElementById('stateBox'),{subtree:true,childList:true,characterData:true,attributes:true});syncRotateLoad();
 if(mobile&&standalone())body.classList.add('standalone-mobile');
+$('subtitle').textContent=mobile?(standalone()?'SERVICE RUN · Preparazione del gioco':'SERVICE RUN · Installazione per smartphone'):'SERVICE RUN · Versione computer';
+$('footerNote').textContent=mobile?(standalone()?'Verifica delle risorse già scaricate. Il gioco si aprirà automaticamente al termine.':'Per giocare su smartphone devi installare l’app. Dopo il download completo puoi giocare anche offline; solo la classifica TOP 100 richiede Internet.'):'Puoi giocare direttamente dal computer. La classifica TOP 100 richiede Internet.';
 $('device').textContent=mobile?'VERSIONE SMARTPHONE':'VERSIONE COMPUTER';
 $('play').href=mobile?'./game-mobile.html':'./game.html';
 let promptInstall=null,preparing=false,jobs=[],redirecting=false;
@@ -73,10 +76,10 @@ function showActions(){
   if(standalone()){
     $('install').hidden=true;
     $('retry').hidden=true;
-    $('footerNote').textContent='Il gioco è già pronto sul dispositivo. Tocca GIOCA SUBITO per aprirlo.';
+    $('footerNote').textContent='Il gioco si apre automaticamente quando le risorse sono pronte.';
   }else{
     $('install').hidden=false;
-    $('footerNote').textContent="L'installazione è facoltativa. La classifica online richiede Internet; il resto del gioco può funzionare offline dopo il caricamento completo.";
+    $('footerNote').textContent=mobile?'Installazione necessaria su smartphone. Una volta completata, il gioco funziona offline; la TOP 100 richiede Internet.':'Puoi giocare direttamente dal computer. La TOP 100 richiede Internet.';
   }
 }
 function showReadySimple(){

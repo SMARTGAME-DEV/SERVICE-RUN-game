@@ -36,7 +36,7 @@
 </main>
 <script>
 (()=>{'use strict';
-const CACHE='service-run-dual-v7-20261017-offline';
+const CACHE='service-run-dual-v8-20261017-download';
 const $=id=>document.getElementById(id);
 const ua=navigator.userAgent;
 const ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
@@ -108,7 +108,7 @@ async function cacheIsReady(list){
   }
   return true;
 }
-function fail(msg){preparing=false;$('stateBox').hidden=false;$('state').textContent='Download incompleto';$('status').hidden=false;$('status').textContent=msg;$('retry').hidden=false;}
+function fail(msg){preparing=false;$('stateBox').hidden=false;$('state').textContent='Download incompleto';$('status').hidden=false;$('status').textContent=msg;$('retry').hidden=false;$('bar').value=Math.min(99,$('bar').value);syncRotateLoad();}
 async function run(){
   if(preparing)return;
   preparing=true;
@@ -135,25 +135,63 @@ async function run(){
   $('detail').textContent='Controllo di tutti i pacchetti';
   $('bar').value=0;
   const cache=await caches.open(CACHE);
-  let count=0,errors=[]; let next=0;
+  let count=0,errors=[],next=0;
+  // A file counts as completed ONLY when its response has been durably put in CacheStorage.
+  function progress(){
+    $('bar').value=Math.floor(count/jobs.length*100);
+    $('detail').textContent=count+' / '+jobs.length+' risorse salvate offline';
+    syncRotateLoad();
+  }
+  async function store(path){
+    const req=new Request(path);
+    let existing=await cache.match(req);
+    if(existing&&existing.ok)return;
+    existing=await caches.match(req);
+    if(existing&&existing.ok){await cache.put(req,existing.clone());return;}
+    let last='errore di rete';
+    for(let attempt=1;attempt<=4;attempt++){
+      try{
+        // Avoid forcing reload for each large media resource; prevents unnecessary iOS network pressure.
+        const response=await fetch(req,{cache:attempt===4?'reload':'default'});
+        if(!response.ok){last='HTTP '+response.status; if(response.status===404||response.status===410)break;}
+        else{
+          await cache.put(req,response.clone());
+          const verify=await cache.match(req);
+          if(verify&&verify.ok)return;
+          last='salvataggio cache non riuscito';
+        }
+      }catch(e){last=e&&e.message?e.message:'connessione o spazio non disponibile';}
+      if(attempt<4)await new Promise(resolve=>setTimeout(resolve,350*attempt));
+    }
+    throw Error(last);
+  }
   async function worker(){
     while(next<jobs.length){
       const path=jobs[next++];
-      try{
-        const req=new Request(path);
-        let res=await cache.match(req);
-        if(!res){
-          res=await caches.match(req);
-          if(!res){res=await fetch(req,{cache:'reload'});if(!res.ok)throw Error(res.status)}
-          await cache.put(req,res.clone());
-        }
-      }catch(e){errors.push(path)}
-      count++; $('bar').value=Math.round(count/jobs.length*100); $('detail').textContent=count+' / '+jobs.length+' risorse controllate';
+      try{await store(path);count++;}
+      catch(e){errors.push({path,reason:e.message||String(e)});}
+      progress();
     }
   }
-  await Promise.all(Array.from({length:Math.min(6,jobs.length)},worker));
+  // Two simultaneous downloads rather than six, to avoid exhausting Safari's media/cache pipeline.
+  await Promise.all(Array.from({length:Math.min(2,jobs.length)},worker));
+  // One last sequential pass for transient failures, without redownloading successful entries.
+  if(errors.length){
+    const failed=errors;errors=[];
+    for(const item of failed){
+      $('detail').textContent='Nuovo tentativo: '+item.path.split('/').pop();syncRotateLoad();
+      try{await store(item.path);count++;}catch(e){errors.push({path:item.path,reason:e.message||String(e)});}
+      progress();
+    }
+  }
   preparing=false;
-  if(errors.length)return fail(errors.length+' file mancanti. Primo: '+errors[0]);
+  if(errors.length){
+    const lines=errors.map(e=>e.path+' ('+e.reason+')');
+    $('detail').textContent=count+' / '+jobs.length+' file salvati; '+errors.length+' mancanti';
+    syncRotateLoad();
+    return fail('Risorse non disponibili: '+lines.join(' · '));
+  }
+  $('bar').value=100;syncRotateLoad();
   if(standalone()){
     showReadySimple();
   }else{

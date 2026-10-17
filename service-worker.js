@@ -1,5 +1,5 @@
 /* SMARTGASmed dual desktop/mobile - offline PWA */
-const CACHE='service-run-dual-v7-20261017-offline';
+const CACHE='service-run-dual-v8-20261017-download';
 self.addEventListener('install',e=>{self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil((async()=>{
   for(const key of await caches.keys()){

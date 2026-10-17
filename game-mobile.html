@@ -281,7 +281,7 @@ function syncPlayerSizeFromSprite(img){
     if(scene.name==='NOTICE')hit=(x>=360&&x<=835&&y>=535&&y<=668);
     if(scene.name==='START')hit=(x>=350&&x<=845&&y>=490&&y<=672);
     if(!hit)return;
-    if(scene.name==='NOTICE') audio.primeTitleEnterOnNotice();
+    if(scene.name==='NOTICE') { audio.unlock(); audio.playTitleEnterGesture(); }
     else { audio.unlock(); audio.playTitleEnterGesture(); }
     mobileEnterFlashUntil=performance.now()+180;
     // Lo stato pressed è lo stesso che legge la tastiera originale nel tick.
@@ -10104,6 +10104,8 @@ function tick() {
     if(scene.name === "NOTICE"){
       drawOpeningNotice();
       if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
+        // Per la tastiera fisica riproduce lo stesso effetto; su touch il suono e gia partito nel pointerdown.
+        if(performance.now()-audio.titleEnterGestureAt>650) audio.playTitleEnterGesture();
         opening.leaving=true;
         fade.start(true,()=>{
           opening.revealStartedAt=performance.now();

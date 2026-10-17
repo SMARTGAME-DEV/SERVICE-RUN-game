@@ -15,7 +15,7 @@
 </style>
 </head>
 <body>
-<div id="rotateApp"><span>↻</span>Ruota il telefono in orizzontale</div>
+<div id="rotateApp"><span>↻</span>Ruota il telefono in orizzontale<div id="rotateLoad" style="font:500 15px system-ui;margin-top:20px;width:min(84vw,370px)"><div id="rotateState">Preparazione del gioco…</div><progress id="rotateBar" max="100" value="0" style="margin-top:12px;width:100%"></progress><div id="rotateDetail" style="font-size:12px;margin-top:8px;color:#bed2c7">Controllo delle risorse offline</div></div></div>
 <main class="panel">
   <small id="device">SERVICE RUN</small>
   <h1>SMARTGASmed</h1>
@@ -36,7 +36,7 @@
 </main>
 <script>
 (()=>{'use strict';
-const CACHE='service-run-dual-v6-20261011-mobile14';
+const CACHE='service-run-dual-v7-20261017-offline';
 const $=id=>document.getElementById(id);
 const ua=navigator.userAgent;
 const ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
@@ -44,6 +44,8 @@ const android=/Android/.test(ua);
 const mobile=ios||android||matchMedia('(pointer:coarse) and (max-width:1100px)').matches;
 const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const body=document.body;
+ function syncRotateLoad(){const src=document.getElementById('stateBox'),dst=document.getElementById('rotateLoad');dst.hidden=src.hidden;document.getElementById('rotateState').textContent=document.getElementById('state').textContent;document.getElementById('rotateBar').value=document.getElementById('bar').value;document.getElementById('rotateDetail').textContent=document.getElementById('detail').textContent;}
+ const rotateObserver=new MutationObserver(syncRotateLoad);rotateObserver.observe(document.getElementById('stateBox'),{subtree:true,childList:true,characterData:true,attributes:true});syncRotateLoad();
 if(mobile&&standalone())body.classList.add('standalone-mobile');
 $('device').textContent=mobile?'VERSIONE SMARTPHONE':'VERSIONE COMPUTER';
 $('play').href=mobile?'./game-mobile.html':'./game.html';
@@ -110,7 +112,7 @@ function fail(msg){preparing=false;$('stateBox').hidden=false;$('state').textCon
 async function run(){
   if(preparing)return;
   preparing=true;
-  $('retry').hidden=true; $('actions').hidden=true; $('status').hidden=false; $('status').textContent=''; $('stateBox').hidden=standalone();
+  $('retry').hidden=true; $('actions').hidden=true; $('status').hidden=false; $('status').textContent=''; $('stateBox').hidden=false;
   try{jobs=await fetchJobs()}catch(e){return fail(e.message)}
   if(!('caches' in window))return fail('Cache offline non disponibile in questo browser');
   try{

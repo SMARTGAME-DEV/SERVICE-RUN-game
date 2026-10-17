@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
     html,body{margin:0;padding:0;height:100%;background:#0b0f14;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
@@ -11,6 +11,8 @@
     canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#0b0f14;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.10)}
 b{font-weight:800}
   
+/* Mobile: evitare pinch zoom e selezione accidentale, input classifica esclusi. */
+@media (pointer:coarse){html,body,#wrap,#game,#touchControls,.touchKey,canvas{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}input,textarea{touch-action:manipulation!important;-webkit-user-select:text!important;user-select:text!important}}
 /* SMARTGASmed responsive touch pad, desktop unchanged */
 #touchControls,#rotateHint{display:none}
 @media (pointer:coarse) and (max-width:1100px){
@@ -633,7 +635,7 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .13 : this.musicVolume);
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .115 : this.musicVolume);
     }
     refreshMusicVolume(){
       for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);
@@ -730,7 +732,7 @@ const IMAGES = {};
         const a=new Audio();
         a.preload="auto";
         a.src=url;
-        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(2.2,this.sfxVolume*volume*(key==="sfx_title_enter"?1.8:1)));
+        a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.65:key==="sfx_select"?1.35:key==="sfx_logo"?1.45:1)));
         if(key==="sfx_coffee_key_fanfare"){
           this.coffeeFanfarePlaying=true;
           this.refreshMusicVolume();
@@ -795,7 +797,7 @@ const IMAGES = {};
       const source=context.createBufferSource();
       const gain=context.createGain();
       source.buffer=buffer;
-      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(2.2,this.sfxVolume*volume*(key==="sfx_title_enter"?1.8:1)));
+      gain.gain.value=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.65:key==="sfx_select"?1.35:key==="sfx_logo"?1.45:1)));
       source.connect(gain);gain.connect(context.destination);
       if(key==="sfx_coffee_key_fanfare"){
         this.coffeeFanfarePlaying=true;
@@ -867,6 +869,15 @@ const IMAGES = {};
       this.activeSfx.clear();this.lastSfx.clear();this.lastMusicAttempt.clear();
       this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
       this.paused=false;
+      // Il reset non deve ricreare/chiudere l'AudioContext: riattivarlo al prossimo tocco.
+      if(this.sfxContext && this.sfxContext.state!=="running"){
+        this.sfxContext.resume().catch(()=>{});
+      }
+      // Recupera eventuali buffer SFX non ancora decodificati: musiche e suoni
+      // hanno percorsi indipendenti su iOS.
+      if(!this.sfxContext || this.sfxContext.state==="closed"){
+        this.prepareSfx();
+      }
     }
   }
 const audio = new AudioManager();
@@ -879,12 +890,22 @@ const audio = new AudioManager();
 
   function userGesture() {
     audio.unlock();
+    if(audio.sfxContext && audio.sfxContext.state!=="running"){
+      audio.sfxContext.resume().catch(()=>{});
+    }
     // Nella schermata di apertura l'audio resta silenzioso fino a INVIO.
   }
   addEventListener("pointerdown", userGesture, {passive:true});
   addEventListener("touchstart", userGesture, {passive:true});
   // Qualsiasi tasto sblocca l'audio: non è più necessario cliccare sul gioco.
   addEventListener("keydown", userGesture, {passive:true});
+  // Tornando nell'app dopo inattività lunga, riattiva gli SFX al primo gesto.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden && audio && audio.sfxContext && audio.sfxContext.state!=="running"){
+      audio.sfxContext.resume().catch(()=>{});
+    }
+  });
+
 
   // ====== Fade ======
   const fade = {
@@ -1551,6 +1572,7 @@ function resetGame() {
     opening.leaving=false;
     opening.revealStartedAt=0;
     gamePaused=false;
+    resetFourTools(); // azzera la partita anche quando il reset parte dai menu
     audio.resetForNewGame();
     leaderboardSavedThisRun = false;
     leaderboardOpen = false;
@@ -2517,12 +2539,10 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
       const y=rowY+(size-dh)/2;
       ctx.save();
       if(!collected){
-        ctx.filter="brightness(0) invert(1)";ctx.globalAlpha=.22;
-        ctx.drawImage(sprite,x-2,y-2,dw+4,dh+4);
-        ctx.filter="brightness(0)";ctx.globalAlpha=.94;
-      }else{
-        ctx.shadowColor="rgba(255,224,110,.85)";ctx.shadowBlur=8;
+        ctx.restore();
+        continue; // Niente icone in PAUSA/VITTORIA prima della raccolta.
       }
+      ctx.shadowColor="rgba(255,224,110,.85)";ctx.shadowBlur=8;
       ctx.drawImage(sprite,x,y,dw,dh);
       ctx.restore();
       if(collected)drawCollectedToolSparkle(x,y,dw,dh,i);

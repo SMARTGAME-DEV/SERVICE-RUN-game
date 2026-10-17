@@ -815,51 +815,54 @@ const IMAGES = {};
       if(!this.enabled)return;
       this.unlock();
       this.titleEnterGestureAt=performance.now();
+      // NESSUNA coda asincrona: il suono parte ora o non parte affatto.
+      // Le promesse di caricamento possono terminare dopo R, causando l'eco tardiva.
       const ctx=this.sfxContext;
       const buffer=this.sfxBuffers.get("sfx_title_enter");
-      if(ctx){
-        if(buffer&&ctx.state==="running"){
-          try{if(this.playTitleEnterAmplified(buffer))return;}catch(error){console.warn("INVIO WebAudio:",error);}
-        }
-        // Il tocco della schermata con le frasi ha già autorizzato l'audio.
-        // Se la decodifica o il resume non sono finiti, aspettiamo WebAudio
-        // invece di usare HTMLAudio a volume più basso solo al primo INVIO.
-        const ready=this.prepareTitleEnter();
-        Promise.all([ready,ctx.state==="running"?Promise.resolve():ctx.resume()])
-          .then(([decoded])=>{
-            if(!this.enabled)return;
-            if(!this.playTitleEnterAmplified(decoded))this.playSfxFallback("sfx_title_enter",1);
-          })
-          .catch(error=>{
-            console.warn("INVIO amplificato non disponibile:",error);
-            this.playSfxFallback("sfx_title_enter",1);
-          });
-        return;
+      if(ctx && ctx.state==="running" && buffer){
+        try{if(this.playTitleEnterAmplified(buffer))return;}
+        catch(error){console.warn("INVIO WebAudio:",error);}
       }
-      // Solo dispositivi senza AudioContext: riproduzione standard.
+      // Riproduzione immediata direttamente nel gesto: nessun .then() che
+      // possa riavviare il suono dopo una transizione o un reset.
       const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
-      const a=new Audio(url);
-      a.preload="auto";
-      a.volume=1;
-      if(!this.titleEnterVoices)this.titleEnterVoices=new Set();
-      this.titleEnterVoices.add(a);
-      const release=()=>this.titleEnterVoices.delete(a);
-      a.addEventListener("ended",release,{once:true});
-      a.addEventListener("error",release,{once:true});
-      // Eseguito immediatamente nel gesto touch, senza attendere Promise.
+      const voice=new Audio(url);
+      voice.preload="auto";
+      voice.volume=1;
+      // Percorso alternativo amplificato: quando Web Audio è già attivo ma
+      // il buffer non è ancora pronto, il media element usa lo STESSO guadagno
+      // dell'INVIO decodificato. Nessun await / then prima del play().
+      let mediaSource=null, mediaGain=null, mediaLimiter=null;
+      if(ctx && ctx.state==="running"){
+        try{
+          mediaSource=ctx.createMediaElementSource(voice);
+          mediaGain=ctx.createGain();
+          mediaLimiter=ctx.createDynamicsCompressor();
+          mediaGain.gain.value=1.65;
+          mediaLimiter.threshold.value=-12;
+          mediaLimiter.knee.value=6;
+          mediaLimiter.ratio.value=8;
+          mediaLimiter.attack.value=.003;
+          mediaLimiter.release.value=.13;
+          mediaSource.connect(mediaGain);
+          mediaGain.connect(mediaLimiter);
+          mediaLimiter.connect(ctx.destination);
+        }catch(error){
+          console.warn("Amplificazione INVIO alternativa non disponibile:",error);
+          try{mediaSource?.disconnect();mediaGain?.disconnect();mediaLimiter?.disconnect()}catch(_){}
+        }
+      }
+      this.titleEnterVoices.add(voice);
+      const release=()=>{
+        this.titleEnterVoices.delete(voice);
+        try{mediaSource?.disconnect();mediaGain?.disconnect();mediaLimiter?.disconnect()}catch(_){}
+      };
+      voice.addEventListener("ended",release,{once:true});
+      voice.addEventListener("error",release,{once:true});
       try{
-        const playing=a.play();
-        if(playing&&playing.catch)playing.catch(()=>{
-          release();
-          // WebAudio resta una seconda via solo se già attivo.
-          const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
-          if(ctx&&ctx.state==="running"&&buffer){
-            try{const source=ctx.createBufferSource();const gain=ctx.createGain();source.buffer=buffer;gain.gain.value=1.8;source.connect(gain);gain.connect(ctx.destination);source.start();source.onended=()=>{source.disconnect();gain.disconnect()}}catch(e){}
-          }
-        });
-      }catch(e){release()}
-      // Non interrompere la voce di INVIO in resetForNewGame:
-      // l'effetto deve poter completare anche durante la transizione.
+        const playing=voice.play();
+        if(playing && playing.catch)playing.catch(()=>release());
+      }catch(error){release();}
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
@@ -946,6 +949,10 @@ const IMAGES = {};
       if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);
     }
     resetForNewGame(){
+      // Chiudi eventuali voci INVIO rimaste dalla partita precedente.
+      for(const voice of this.titleEnterVoices){try{voice.pause();voice.currentTime=0;}catch(e){}}
+      this.titleEnterVoices.clear();
+      this.titleEnterGestureAt=0;
       this.syncVanEngine(false);
       this.stopMusic();
       for(const a of this.tracks.values()){a.pause();try{a.currentTime=0;}catch(e){}}

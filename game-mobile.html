@@ -2997,7 +2997,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     ctx.fillStyle="rgba(20,45,29,.82)";ctx.strokeStyle="#32c46b";ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(bx,by,bw,bh,9);ctx.fill();ctx.stroke();
     ctx.fillStyle="#ffdf57";ctx.font="900 22px monospace";
-    ctx.fillText(opening.leaving && fade.dir===0 ? "PREMI ANCORA PER CONTINUARE" : "PREMI INVIO PER CONTINUARE",W()/2,by+35);
+    ctx.fillText(opening.leaving && fade.dir===0 ? "PREMI ANCORA" : "PREMI INVIO PER CONTINUARE",W()/2,by+35);
     if(opening.audioError){
       ctx.font="14px system-ui";ctx.fillText("Audio non pronto: premi INVIO per riprovare",W()/2,650);
     }

@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.25" />
+  <meta name="service-run-mobile-version" content="1.26" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -771,7 +771,7 @@ const IMAGES = {};
       if(gain.cancelAndHoldAtTime)gain.cancelAndHoldAtTime(t);
       else {gain.cancelScheduledValues(t);gain.setValueAtTime(held,t);}
       gain.linearRampToValueAtTime(low,t+.055);
-      const end=t+Math.max(.055,duration-2); // v1.25: attenuazione accorciata di 2 secondi
+      const end=t+Math.max(.055,duration-2);
       gain.setValueAtTime(low,end);
       gain.linearRampToValueAtTime(normal,end+.65);
       this.titleDuckUntil=end+.65;
@@ -2997,7 +2997,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     ctx.fillStyle="rgba(20,45,29,.82)";ctx.strokeStyle="#32c46b";ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(bx,by,bw,bh,9);ctx.fill();ctx.stroke();
     ctx.fillStyle="#ffdf57";ctx.font="900 22px monospace";
-    ctx.fillText((opening.leaving || opening.audioError) && fade.dir===0 ? "PREMI ANCORA PER CONTINUARE" : "PREMI INVIO PER CONTINUARE",W()/2,by+35);
+    ctx.fillText(opening.leaving && fade.dir===0 ? "PREMI ANCORA PER CONTINUARE" : "PREMI INVIO PER CONTINUARE",W()/2,by+35);
     if(opening.audioError){
       ctx.font="14px system-ui";ctx.fillText("Audio non pronto: premi INVIO per riprovare",W()/2,650);
     }
@@ -10167,14 +10167,12 @@ function tick() {
 // Avviso iniziale -> nero -> solo logo riflesso -> schermata completa -> Invio.
     if(scene.name === "NOTICE"){
       drawOpeningNotice();
-      if(input.wasPressed("Enter") && fade.dir===0){
+      if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
         opening.leaving=true;
         opening.audioError=false;
         const epoch=audio.audioEpoch;
-        const attempt=opening.audioAttempt=(opening.audioAttempt||0)+1;
-        // A new press retries activation even if an earlier resume is still pending.
         Promise.all([audio.prepareTitleAssets(),audio.titleActivation]).then(([loaded,activated])=>{
-          if(epoch!==audio.audioEpoch || attempt!==opening.audioAttempt || scene.name!=="NOTICE" || fade.dir!==0)return;
+          if(epoch!==audio.audioEpoch || scene.name!=="NOTICE")return;
           if(!loaded || !activated || audio.sfxContext?.state!=="running"){
             opening.audioError=true;
             opening.leaving=false;

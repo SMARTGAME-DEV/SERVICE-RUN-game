@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.24" />
+  <meta name="service-run-mobile-version" content="1.27" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -778,7 +778,18 @@ const IMAGES = {};
       // Nessuna dipendenza da requestAnimationFrame e nessun fattore persistente.
       this.titleDuckFactor=1;
     }
+    configurePlaybackSession(){
+      // iOS: Web Audio alone may use the ringer/ambient category even while
+      // AudioContext is running. HTML music in LEVEL used to change that later.
+      // Select the media category BEFORE creating/resuming the same context.
+      // Feature detection keeps browsers without Audio Session API unchanged.
+      try{
+        if(navigator.audioSession && navigator.audioSession.type!=="playback")
+          navigator.audioSession.type="playback";
+      }catch(error){console.warn("Sessione audio playback non disponibile:",error);}
+    }
     prepareSfx(){
+      this.configurePlaybackSession();
       const Context=window.AudioContext||window.webkitAudioContext;
       if(!Context)return;
       try{this.sfxContext=new Context();}
@@ -813,6 +824,7 @@ const IMAGES = {};
       this.sfxReady=Promise.all(Array.from({length:Math.min(3,keys.length)},()=>worker()));
     }
     unlock(){
+      this.configurePlaybackSession();
       this._unlocked=true;
       const ctx=this.sfxContext;
       if(!ctx || ctx.state==="closed")return Promise.resolve(false);
@@ -1068,6 +1080,9 @@ const audio = new AudioManager();
   }
   addEventListener("pointerdown", userGesture, {passive:true});
   addEventListener("touchstart", userGesture, {passive:true});
+  // A native touch release can unlock iOS when touchstart/pointerdown did not.
+  // This only resumes audio; it never repeats Enter or changes the scene.
+  addEventListener("touchend", userGesture, {passive:true});
   addEventListener("keydown", userGesture, {passive:true});
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden){
@@ -10167,23 +10182,23 @@ function tick() {
 // Avviso iniziale -> nero -> solo logo riflesso -> schermata completa -> Invio.
     if(scene.name === "NOTICE"){
       drawOpeningNotice();
-      if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
+      if(input.wasPressed("Enter") && fade.dir===0){
         opening.leaving=true;
-        opening.audioError=false;
-        const epoch=audio.audioEpoch;
-        Promise.all([audio.prepareTitleAssets(),audio.titleActivation]).then(([loaded,activated])=>{
-          if(epoch!==audio.audioEpoch || scene.name!=="NOTICE")return;
-          if(!loaded || !activated || audio.sfxContext?.state!=="running"){
-            opening.audioError=true;
-            opening.leaving=false;
-            return;
-          }
-          fade.start(true,()=>{
+        // Retry a failed asset load, without waiting on a previous resume Promise.
+        // unlock() stays in the native gesture handlers, never in requestAnimationFrame.
+        audio.prepareTitleAssets();
+      }
+      // A resume Promise can stay pending on iOS even after a later gesture has
+      // activated the context. Observe the current prerequisites instead of
+      // latching the first Promise forever. No deferred callback can survive R.
+      if(opening.leaving && fade.dir===0 && !document.hidden &&
+         audio.sfxContext?.state==="running" && audio.titleMusicBuffer &&
+         audio.sfxBuffers.has("sfx_title_enter")){
+        fade.start(true,()=>{
           opening.revealStartedAt=performance.now();
           scene.set("START");
           audio.playMusic("music_title");
           opening.leaving=false;
-          });
         });
       }
     } else if (scene.name === "START") {

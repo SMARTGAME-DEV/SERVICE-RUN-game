@@ -588,7 +588,7 @@ const IMAGES = {};
       this.musicVolume=.26; this.sfxVolume=.90; this.maxSfx=7;
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.titleDuckFactor=1; this.titleDuckRun=0; // solo musica del titolo durante INVIO
-      this.titleMusicGain=null; this.titleMusicSource=null; // WebAudio gain: iOS ignora HTMLAudioElement.volume
+      this.titleMusicGain=null; this.titleMusicSource=null; this.titleDuckUntil=0; // WebAudio gain: iOS ignora HTMLAudioElement.volume
       this.jingleVolume=.78; // vittoria/sconfitta: volume indipendente dalle musiche dei livelli
       this.lastMusicAttempt=new Map();
       this.offlineAudioUrls=new Map(); this.offlineAudioPending=new Map();
@@ -679,7 +679,8 @@ const IMAGES = {};
         if(key==="music_title" && this.titleMusicGain && this.titleMusicSource){
           // Su iOS audio.volume non regola il volume: il GainNode lavora realmente.
           a.volume=1;
-          this.titleMusicGain.gain.value=this.trackVolume(key);
+          if(!this.sfxContext || this.sfxContext.currentTime>=this.titleDuckUntil)
+            this.titleMusicGain.gain.value=this.trackVolume(key);
         }else{
           a.volume=this.trackVolume(key);
         }
@@ -699,31 +700,34 @@ const IMAGES = {};
         return true;
       }catch(error){console.warn("Ducking titolo: nodo WebAudio non disponibile",error);return false;}
     }
-    // Audio ducking: attenuazione rapida e ritorno morbido della SOLA musica
-    // del titolo, senza modificare il volume o il percorso degli effetti sonori.
+    // Ducking del SOLO INVIO nel titolo. L'automazione di AudioParam
+    // termina indipendentemente dai frame (rAF) e ritorna sempre al volume base.
+    resetTitleDucking(){
+      this.titleDuckFactor=1;
+      this.titleDuckRun++;
+      this.titleDuckUntil=0;
+      const ctx=this.sfxContext, gain=this.titleMusicGain;
+      if(gain && ctx){
+        const t=ctx.currentTime;
+        gain.gain.cancelScheduledValues(t);
+        gain.gain.setValueAtTime(this.trackVolume("music_title"),t);
+      }
+      this.refreshMusicVolume();
+    }
     duckTitleMusic(){
       if(this.musicKey!=="music_title" || scene.name!=="START")return;
-      this.ensureTitleMusicGain();
-      const run=++this.titleDuckRun;
-      const began=performance.now(), initial=this.titleDuckFactor;
-      const low=.10, fadeDown=55, hold=400, fadeUp=650;
-      const animate=(now)=>{
-        if(run!==this.titleDuckRun)return;
-        const elapsed=now-began;
-        if(elapsed<fadeDown){
-          this.titleDuckFactor=initial+(low-initial)*(elapsed/fadeDown);
-        }else if(elapsed<fadeDown+hold){
-          this.titleDuckFactor=low;
-        }else if(elapsed<fadeDown+hold+fadeUp){
-          const p=(elapsed-fadeDown-hold)/fadeUp;
-          this.titleDuckFactor=low+(1-low)*(p*p*(3-2*p));
-        }else{
-          this.titleDuckFactor=1;
-        }
-        this.refreshMusicVolume();
-        if(elapsed<fadeDown+hold+fadeUp)requestAnimationFrame(animate);
-      };
-      requestAnimationFrame(animate);
+      if(!this.ensureTitleMusicGain())return; // mai attenuazioni persistenti via volume HTML iOS
+      const ctx=this.sfxContext, gain=this.titleMusicGain.gain;
+      const t=ctx.currentTime;
+      const normal=.085, low=normal*.10;
+      gain.cancelScheduledValues(t);
+      gain.setValueAtTime(gain.value,t);
+      gain.linearRampToValueAtTime(low,t+.055);
+      gain.setValueAtTime(low,t+.455);
+      gain.linearRampToValueAtTime(normal,t+1.105);
+      this.titleDuckUntil=t+1.105;
+      // Nessuna dipendenza da requestAnimationFrame e nessun fattore persistente.
+      this.titleDuckFactor=1;
     }
     prepareSfx(){
       const Context=window.AudioContext||window.webkitAudioContext;
@@ -781,7 +785,8 @@ const IMAGES = {};
         if(key==="music_title")this.ensureTitleMusicGain();
         if(key==="music_title" && this.titleMusicGain){
           a.volume=1;
-          this.titleMusicGain.gain.value=this.trackVolume(key);
+          if(!this.sfxContext || this.sfxContext.currentTime>=this.titleDuckUntil)
+            this.titleMusicGain.gain.value=this.trackVolume(key);
         }else a.volume=this.trackVolume(key);
         if(a.paused){
           const now=performance.now();
@@ -793,16 +798,14 @@ const IMAGES = {};
     }
     playMusic(key){
       if(this.musicKey===key){this._start(key);return;}
-      if(key!=="music_title"){
-        this.titleDuckRun++;
-        this.titleDuckFactor=1;
-      }
+      if(key!=="music_title")this.resetTitleDucking();
       if(this.musicKey){const old=this.tracks.get(this.musicKey);if(old)old.pause();}
       this.musicKey=key;this.music=this.track(key);
       this._start(key);
     }
     forcePlayMusic(key){this.playMusic(key);}
     stopMusic(){
+      this.resetTitleDucking();
       if(this.musicKey){const a=this.tracks.get(this.musicKey);if(a)a.pause();}
       this.musicKey=null;this.music=null;
     }
@@ -894,7 +897,7 @@ const IMAGES = {};
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
-      if(key==="sfx_title_enter" && this.enabled) this.duckTitleMusic();
+      // Solo il gesto INVIO del titolo attiva ducking: mai playSfx generico.
       if(!this.enabled||!this._unlocked||(!this.files[key]))return;
       if(this.paused&&key!=="sfx_pause")return;
       const context=this.sfxContext,buffer=this.sfxBuffers.get(key);
@@ -978,6 +981,7 @@ const IMAGES = {};
       if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);
     }
     resetForNewGame(){
+      this.resetTitleDucking();
       this.syncVanEngine(false);
       this.stopMusic();
       for(const a of this.tracks.values()){a.pause();try{a.currentTime=0;}catch(e){}}

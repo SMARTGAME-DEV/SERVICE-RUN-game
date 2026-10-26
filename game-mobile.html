@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.23" />
+  <meta name="service-run-mobile-version" content="1.24" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -589,7 +589,9 @@ const IMAGES = {};
       this.musicVolume=.26; this.sfxVolume=.90; this.maxSfx=7;
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.titleDuckFactor=1; this.titleDuckRun=0; // solo musica del titolo durante INVIO
-      this.titleMusicGain=null; this.titleMusicSource=null; this.titleDuckUntil=0; // WebAudio gain: iOS ignora HTMLAudioElement.volume
+      this.titleMusicGain=null; this.titleMusicSource=null; this.titleDuckUntil=0;
+      this.titleMusicBuffer=null; this.titleMusicOffset=0; this.titleMusicStartedAt=0;
+      this.titleActivation=null; this.titleAssetsReady=null;
       this.jingleVolume=.78; // vittoria/sconfitta: volume indipendente dalle musiche dei livelli
       this.lastMusicAttempt=new Map();
       this.offlineAudioUrls=new Map(); this.offlineAudioPending=new Map();
@@ -625,6 +627,7 @@ const IMAGES = {};
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
+      this.prepareTitleAssets();
       // Prepara URL locali completi anche per gli effetti.
       // Su iPhone questo offre un fallback affidabile se WebAudio non parte subito.
       for(const key of Object.keys(this.files)){
@@ -687,20 +690,62 @@ const IMAGES = {};
       }
     }
     ensureTitleMusicGain(){
-      if(this.titleMusicSource && this.titleMusicGain)return true;
-      const ctx=this.sfxContext, a=this.tracks.get("music_title");
-      if(!ctx || ctx.state==="closed" || !a)return false;
-      try{
-        // Un MediaElement può essere collegato una sola volta: conserviamo i nodi.
-        const source=ctx.createMediaElementSource(a);
-        const gain=ctx.createGain();
-        gain.gain.value=this.trackVolume("music_title");
-        a.volume=1;
-        source.connect(gain); gain.connect(ctx.destination);
-        this.titleMusicSource=source; this.titleMusicGain=gain;
-        this.refreshMusicVolume();
-        return true;
-      }catch(error){console.warn("Ducking titolo: nodo WebAudio non disponibile",error);return false;}
+      const ctx=this.sfxContext;
+      if(!ctx || ctx.state==="closed")return false;
+      if(!this.titleMusicGain){
+        this.titleMusicGain=ctx.createGain();
+        this.titleMusicGain.gain.value=this.trackVolume("music_title");
+        this.titleMusicGain.connect(ctx.destination);
+      }
+      return true;
+    }
+    loadAudioBuffer(key){
+      if(this.sfxBuffers.has(key))return Promise.resolve(this.sfxBuffers.get(key));
+      if(this.sfxLoading.has(key))return this.sfxLoading.get(key);
+      const ctx=this.sfxContext;
+      const loading=this.prepareOfflineAudio(key).then(url=>fetch(url)).then(response=>{
+        if(!response.ok)throw new Error("HTTP "+response.status);
+        return response.arrayBuffer();
+      }).then(data=>ctx.decodeAudioData(data)).then(buffer=>{
+        this.sfxBuffers.set(key,buffer);return buffer;
+      }).finally(()=>this.sfxLoading.delete(key));
+      this.sfxLoading.set(key,loading);
+      return loading;
+    }
+    prepareTitleAssets(){
+      if(this.titleAssetsReady)return this.titleAssetsReady;
+      if(!this.sfxContext)return Promise.resolve(false);
+      this.titleAssetsReady=Promise.all([
+        this.loadAudioBuffer("sfx_title_enter"),
+        this.loadAudioBuffer("music_title").then(buffer=>{this.titleMusicBuffer=buffer;})
+      ]).then(()=>true).catch(error=>{
+        this.titleAssetsReady=null;
+        console.warn("Preparazione audio titolo:",error);return false;
+      });
+      return this.titleAssetsReady;
+    }
+    startTitleMusic(){
+      const ctx=this.sfxContext;
+      if(this.titleMusicSource || !this.titleMusicBuffer || !ctx || ctx.state!=="running" ||
+         !this.enabled || this.paused || document.hidden || this.musicKey!=="music_title")return;
+      if(!this.ensureTitleMusicGain())return;
+      const source=ctx.createBufferSource();
+      source.buffer=this.titleMusicBuffer; source.loop=true;
+      source.connect(this.titleMusicGain);
+      this.titleMusicSource=source;
+      this.titleMusicStartedAt=ctx.currentTime;
+      source.onended=()=>{source.disconnect();if(this.titleMusicSource===source)this.titleMusicSource=null;};
+      source.start(0,this.titleMusicOffset % source.buffer.duration);
+    }
+    stopTitleMusic(rewind=false){
+      const source=this.titleMusicSource, ctx=this.sfxContext;
+      if(source){
+        this.titleMusicOffset+=(ctx.currentTime-this.titleMusicStartedAt);
+        this.titleMusicSource=null;
+        try{source.stop();}catch(e){}
+        source.disconnect();
+      }
+      if(rewind)this.titleMusicOffset=0;
     }
     // Ducking del SOLO INVIO nel titolo. L'automazione di AudioParam
     // termina indipendentemente dai frame (rAF) e ritorna sempre al volume base.
@@ -760,11 +805,7 @@ const IMAGES = {};
         while(index<keys.length){
           const key=keys[index++];
           try{
-            const response=await fetch(await this.prepareOfflineAudio(key));
-            if(!response.ok)throw new Error("HTTP "+response.status);
-            const data=await response.arrayBuffer();
-            const buffer=await this.sfxContext.decodeAudioData(data);
-            this.sfxBuffers.set(key,buffer);
+            await this.loadAudioBuffer(key);
           }catch(error){console.warn("Effetto non preparato:",key,error);}
           finally{if(key==="sfx_title_enter")this.resolveTitleReady();}
         }
@@ -773,42 +814,45 @@ const IMAGES = {};
     }
     unlock(){
       this._unlocked=true;
-      // Build the title route even while suspended, before any media play().
-      this.track("music_title");
-      this.ensureTitleMusicGain();
       const ctx=this.sfxContext;
-      if(ctx && ctx.state!=="running"){
-        const epoch=this.audioEpoch;
-        return ctx.resume().then(()=>{
-          if(epoch===this.audioEpoch && this.musicKey && !this.paused){
-            this.lastMusicAttempt.delete(this.musicKey);
-            this._start(this.musicKey);
-          }
-        }).catch(()=>{});
+      if(!ctx || ctx.state==="closed")return Promise.resolve(false);
+      this.ensureTitleMusicGain();
+      // Both operations occur inside the actual NOTICE touch/key handler.
+      // No HTMLMediaElement.play() is deferred until the fade or a Promise.
+      if(ctx.state!=="running"){
+        const resumed=ctx.resume();
+        const silent=ctx.createBufferSource();
+        silent.buffer=ctx.createBuffer(1,1,ctx.sampleRate);
+        silent.connect(ctx.destination);
+        silent.onended=()=>silent.disconnect();
+        silent.start();
+        this.titleActivation=resumed.then(()=>{
+          if(this.musicKey && !this.paused)this._start(this.musicKey);
+          return ctx.state==="running";
+        }).catch(()=>false);
+      }else{
+        this.titleActivation=Promise.resolve(true);
+        if(this.musicKey && !this.paused)this._start(this.musicKey);
       }
-      if(this.musicKey && !this.paused)this._start(this.musicKey);
-      return Promise.resolve();
+      return this.titleActivation;
     }
     tryAutoplay(){if(this.musicKey)this._start(this.musicKey);}
     setEnabled(value){
       this.enabled=!!value;
-      if(!this.enabled){this.cancelTransientAudio();for(const a of this.tracks.values())a.pause();if(this.vanEngine)this.vanEngine.pause();}
+      if(!this.enabled){this.cancelTransientAudio();this.stopTitleMusic();for(const a of this.tracks.values())a.pause();if(this.vanEngine)this.vanEngine.pause();}
       else if(!this.paused){if(this.musicKey)this._start(this.musicKey);if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);}
     }
     _start(key){
       // Mantiene le regole originali (autoplay, volume, pausa e cambio scena).
       // Aspetta soltanto che l'URL locale del file COMPLETO sia disponibile.
       if(!this.enabled||this.paused||document.hidden)return;
+      if(key==="music_title"){this.startTitleMusic();return;}
       const a=this.track(key);if(!a)return;
       const epoch=this.audioEpoch;
       this.prepareOfflineAudio(key).then(url=>{
         if(epoch!==this.audioEpoch||!this.enabled||this.paused||document.hidden||this.musicKey!==key)return;
         if(a.src!==url)a.src=url;
-        if(key==="music_title" && (!this.ensureTitleMusicGain() || this.sfxContext.state!=="running"))return;
-        if(key==="music_title" && this.titleMusicGain){
-          a.volume=1;
-          // Gain was initialized before play(); no per-frame automation writes.
-        }else a.volume=this.trackVolume(key);
+        a.volume=this.trackVolume(key);
         if(a.paused){
           const now=performance.now();
           if(now-(this.lastMusicAttempt.get(key)||-10000)<800)return;
@@ -819,13 +863,14 @@ const IMAGES = {};
     }
     playMusic(key){
       if(this.musicKey===key){this._start(key);return;}
-      if(key!=="music_title")this.resetTitleDucking();
+      if(key!=="music_title"){this.stopTitleMusic();this.resetTitleDucking();}
       if(this.musicKey){const old=this.tracks.get(this.musicKey);if(old)old.pause();}
       this.musicKey=key;this.music=this.track(key);
       this._start(key);
     }
     forcePlayMusic(key){this.playMusic(key);}
     stopMusic(){
+      this.stopTitleMusic();
       this.resetTitleDucking();
       if(this.musicKey){const a=this.tracks.get(this.musicKey);if(a)a.pause();}
       this.musicKey=null;this.music=null;
@@ -879,29 +924,23 @@ const IMAGES = {};
       this.resetTitleDucking();
     }
     playTitleEnterGesture(){
-      if(!this.enabled || this.paused || scene.name!=="START")return;
+      if(!this.enabled || this.paused || scene.name!=="START" || document.hidden)return;
       this.titleEnterGestureAt=performance.now();
-      const at=this.titleEnterGestureAt, epoch=this.audioEpoch, request=++this.titleRequest;
-      const ready=this.unlock();
-      const play=()=>{
-        const ctx=this.sfxContext, buffer=this.sfxBuffers.get("sfx_title_enter");
-        // Never queue a gesture behind loading, interruption, reset, or later input.
-        if(epoch!==this.audioEpoch || request!==this.titleRequest || performance.now()-at>180 ||
-           !this.enabled || this.paused || document.hidden || scene.name!=="START" ||
-           !ctx || ctx.state!=="running" || !buffer)return;
-        const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
-        source.buffer=buffer;
-        gain.gain.value=1.65;
-        limiter.threshold.value=-12; limiter.knee.value=6; limiter.ratio.value=8;
-        limiter.attack.value=.003; limiter.release.value=.13;
-        source.connect(gain); gain.connect(limiter); limiter.connect(ctx.destination);
-        this.titleEnterVoices.add(source);
-        source.onended=()=>{this.titleEnterVoices.delete(source);source.disconnect();gain.disconnect();limiter.disconnect();};
-        try{source.start();this.duckTitleMusic(buffer.duration);}
-        catch(e){source.onended();}
-      };
-      if(this.sfxContext?.state==="running")play();
-      else ready.then(play);
+      this.unlock();
+      const ctx=this.sfxContext, buffer=this.sfxBuffers.get("sfx_title_enter");
+      // NOTICE has already prepared and activated this same audio graph.
+      // No timeout, HTML fallback, or asynchronous replay of this gesture.
+      if(!ctx || ctx.state!=="running" || !buffer)return;
+      const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
+      source.buffer=buffer;
+      gain.gain.value=1.65;
+      limiter.threshold.value=-12; limiter.knee.value=6; limiter.ratio.value=8;
+      limiter.attack.value=.003; limiter.release.value=.13;
+      source.connect(gain); gain.connect(limiter); limiter.connect(ctx.destination);
+      this.titleEnterVoices.add(source);
+      source.onended=()=>{this.titleEnterVoices.delete(source);source.disconnect();gain.disconnect();limiter.disconnect();};
+      try{source.start();this.duckTitleMusic(buffer.duration);}
+      catch(e){source.onended();}
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
@@ -978,6 +1017,7 @@ const IMAGES = {};
     pauseAll(){
       this.cancelTransientAudio();
       this.paused=true;
+      this.stopTitleMusic();
       for(const a of this.tracks.values())a.pause();
       if(this.vanEngine)this.vanEngine.pause();
       for(const a of this.activeSfx){try{a.stop();}catch(e){}}
@@ -994,10 +1034,11 @@ const IMAGES = {};
       this.cancelTransientAudio();
       this.syncVanEngine(false);
       this.stopMusic();
+      this.stopTitleMusic(true);
       for(const a of this.tracks.values()){a.pause();try{a.currentTime=0;}catch(e){}}
       for(const a of this.activeSfx){try{a.stop();}catch(e){}}
       this.activeSfx.clear();this.lastSfx.clear();this.lastMusicAttempt.clear();
-      this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
+      this.coffeeFanfarePlaying=false;this.resetTitleDucking();
       this.paused=false;
       // Il reset non deve ricreare/chiudere l'AudioContext: riattivarlo al prossimo tocco.
       if(this.sfxContext && this.sfxContext.state!=="running"){
@@ -1006,7 +1047,9 @@ const IMAGES = {};
       // Recupera eventuali buffer SFX non ancora decodificati: musiche e suoni
       // hanno percorsi indipendenti su iOS.
       if(!this.sfxContext || this.sfxContext.state==="closed"){
+        this.titleMusicGain=null;this.titleMusicBuffer=null;this.titleAssetsReady=null;
         this.prepareSfx();
+        this.prepareTitleAssets();
       }
     }
   }
@@ -1030,6 +1073,7 @@ const audio = new AudioManager();
     if(document.hidden){
       if(scene.name==="NOTICE")opening.leaving=false;
       audio.cancelTransientAudio();
+      audio.stopTitleMusic();
       for(const source of audio.activeSfx){try{source.stop();}catch(e){}}
       audio.activeSfx.clear();
       for(const track of audio.tracks.values())track.pause();
@@ -1702,6 +1746,7 @@ function triggerTimeOutLoseFix134() {
 function resetGame() {
     releaseAllTouchKeys(); // R azzera ogni tasto virtuale rimasto premuto
     opening.leaving=false;
+    opening.audioError=false;
     opening.revealStartedAt=0;
     gamePaused=false;
     resetFourTools(); // azzera la partita anche quando il reset parte dai menu
@@ -2952,7 +2997,10 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     ctx.fillStyle="rgba(20,45,29,.82)";ctx.strokeStyle="#32c46b";ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(bx,by,bw,bh,9);ctx.fill();ctx.stroke();
     ctx.fillStyle="#ffdf57";ctx.font="900 22px monospace";
-    ctx.fillText("PREMI INVIO PER CONTINUARE",W()/2,by+35);
+    ctx.fillText(opening.leaving && fade.dir===0 ? "PREPARAZIONE AUDIO..." : "PREMI INVIO PER CONTINUARE",W()/2,by+35);
+    if(opening.audioError){
+      ctx.font="14px system-ui";ctx.fillText("Audio non pronto: premi INVIO per riprovare",W()/2,650);
+    }
     if(performance.now()<mobileEnterFlashUntil){
       ctx.fillStyle="rgba(255,245,120,.23)";
       ctx.fillRect(bx,by,bw,bh);
@@ -10121,10 +10169,15 @@ function tick() {
       drawOpeningNotice();
       if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
         opening.leaving=true;
+        opening.audioError=false;
         const epoch=audio.audioEpoch;
-        Promise.resolve(audio.titleReady).then(()=>{
+        Promise.all([audio.prepareTitleAssets(),audio.titleActivation]).then(([loaded,activated])=>{
           if(epoch!==audio.audioEpoch || scene.name!=="NOTICE")return;
-          // If decoding failed, keep the game usable; never substitute a different-volume player.
+          if(!loaded || !activated || audio.sfxContext?.state!=="running"){
+            opening.audioError=true;
+            opening.leaving=false;
+            return;
+          }
           fade.start(true,()=>{
           opening.revealStartedAt=performance.now();
           scene.set("START");

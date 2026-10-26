@@ -588,6 +588,7 @@ const IMAGES = {};
       this.musicVolume=.26; this.sfxVolume=.90; this.maxSfx=7;
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.titleDuckFactor=1; this.titleDuckRun=0; // solo musica del titolo durante INVIO
+      this.titleMusicGain=null; this.titleMusicSource=null; // WebAudio gain: iOS ignora HTMLAudioElement.volume
       this.jingleVolume=.78; // vittoria/sconfitta: volume indipendente dalle musiche dei livelli
       this.lastMusicAttempt=new Map();
       this.offlineAudioUrls=new Map(); this.offlineAudioPending=new Map();
@@ -674,15 +675,38 @@ const IMAGES = {};
       return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .085 * this.titleDuckFactor : (key==="music_level" || key==="music_interior") ? .22 : this.musicVolume);
     }
     refreshMusicVolume(){
-      for(const [key,a] of this.tracks)a.volume=this.trackVolume(key);
+      for(const [key,a] of this.tracks){
+        if(key==="music_title" && this.titleMusicGain && this.titleMusicSource){
+          // Su iOS audio.volume non regola il volume: il GainNode lavora realmente.
+          a.volume=1;
+          this.titleMusicGain.gain.value=this.trackVolume(key);
+        }else{
+          a.volume=this.trackVolume(key);
+        }
+      }
+    }
+    ensureTitleMusicGain(){
+      if(this.titleMusicSource && this.titleMusicGain)return true;
+      const ctx=this.sfxContext, a=this.tracks.get("music_title");
+      if(!ctx || ctx.state!=="running" || !a)return false;
+      try{
+        // Un MediaElement può essere collegato una sola volta: conserviamo i nodi.
+        const source=ctx.createMediaElementSource(a);
+        const gain=ctx.createGain();
+        source.connect(gain); gain.connect(ctx.destination);
+        this.titleMusicSource=source; this.titleMusicGain=gain;
+        this.refreshMusicVolume();
+        return true;
+      }catch(error){console.warn("Ducking titolo: nodo WebAudio non disponibile",error);return false;}
     }
     // Audio ducking: attenuazione rapida e ritorno morbido della SOLA musica
     // del titolo, senza modificare il volume o il percorso degli effetti sonori.
     duckTitleMusic(){
       if(this.musicKey!=="music_title" || scene.name!=="START")return;
+      this.ensureTitleMusicGain();
       const run=++this.titleDuckRun;
       const began=performance.now(), initial=this.titleDuckFactor;
-      const low=.32, fadeDown=75, hold=170, fadeUp=420;
+      const low=.10, fadeDown=55, hold=400, fadeUp=650;
       const animate=(now)=>{
         if(run!==this.titleDuckRun)return;
         const elapsed=now-began;
@@ -754,7 +778,11 @@ const IMAGES = {};
       this.prepareOfflineAudio(key).then(url=>{
         if(!this.enabled||this.paused||this.musicKey!==key)return;
         if(a.src!==url)a.src=url;
-        a.volume=this.trackVolume(key);
+        if(key==="music_title")this.ensureTitleMusicGain();
+        if(key==="music_title" && this.titleMusicGain){
+          a.volume=1;
+          this.titleMusicGain.gain.value=this.trackVolume(key);
+        }else a.volume=this.trackVolume(key);
         if(a.paused){
           const now=performance.now();
           if(now-(this.lastMusicAttempt.get(key)||-10000)<800)return;

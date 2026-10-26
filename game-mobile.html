@@ -2,6 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
+  <meta name="service-run-mobile-version" content="1.23" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -617,10 +618,10 @@ const IMAGES = {};
         sfx_coffee_key_fanfare:"SMARTGAS-fanfara-chiavetta-caffe.wav",
         sfx_van_engine:"rumore-furgone-loop.wav"
       };
-      // SFX del titolo precaricato come elemento persistente; WebKit richiede
-      // play() direttamente nello stesso evento touch, soprattutto dopo riapertura PWA.
+      // INVIO usa sempre il buffer WebAudio, preparato prima di lasciare NOTICE.
       this.titleEnterGestureAt=0;
       this.titleEnterVoices=new Set();
+      this.audioEpoch=0; this.titleRequest=0; this.fallbackVoices=new Set();
       this.alias={}; // Non attribuire suoni arbitrari alle azioni senza file dedicato.
       // Decodifica in anticipo gli effetti: il caricamento PWA da solo non li prepara.
       this.prepareSfx();
@@ -679,8 +680,7 @@ const IMAGES = {};
         if(key==="music_title" && this.titleMusicGain && this.titleMusicSource){
           // Su iOS audio.volume non regola il volume: il GainNode lavora realmente.
           a.volume=1;
-          if(!this.sfxContext || this.sfxContext.currentTime>=this.titleDuckUntil)
-            this.titleMusicGain.gain.value=this.trackVolume(key);
+          // The dedicated duck envelope owns this AudioParam.
         }else{
           a.volume=this.trackVolume(key);
         }
@@ -689,11 +689,13 @@ const IMAGES = {};
     ensureTitleMusicGain(){
       if(this.titleMusicSource && this.titleMusicGain)return true;
       const ctx=this.sfxContext, a=this.tracks.get("music_title");
-      if(!ctx || ctx.state!=="running" || !a)return false;
+      if(!ctx || ctx.state==="closed" || !a)return false;
       try{
         // Un MediaElement può essere collegato una sola volta: conserviamo i nodi.
         const source=ctx.createMediaElementSource(a);
         const gain=ctx.createGain();
+        gain.gain.value=this.trackVolume("music_title");
+        a.volume=1;
         source.connect(gain); gain.connect(ctx.destination);
         this.titleMusicSource=source; this.titleMusicGain=gain;
         this.refreshMusicVolume();
@@ -714,18 +716,20 @@ const IMAGES = {};
       }
       this.refreshMusicVolume();
     }
-    duckTitleMusic(){
+    duckTitleMusic(duration=.4){
       if(this.musicKey!=="music_title" || scene.name!=="START")return;
       if(!this.ensureTitleMusicGain())return; // mai attenuazioni persistenti via volume HTML iOS
       const ctx=this.sfxContext, gain=this.titleMusicGain.gain;
       const t=ctx.currentTime;
       const normal=.085, low=normal*.10;
-      gain.cancelScheduledValues(t);
-      gain.setValueAtTime(gain.value,t);
+      const held=gain.value;
+      if(gain.cancelAndHoldAtTime)gain.cancelAndHoldAtTime(t);
+      else {gain.cancelScheduledValues(t);gain.setValueAtTime(held,t);}
       gain.linearRampToValueAtTime(low,t+.055);
-      gain.setValueAtTime(low,t+.455);
-      gain.linearRampToValueAtTime(normal,t+1.105);
-      this.titleDuckUntil=t+1.105;
+      const end=t+Math.max(.055,duration);
+      gain.setValueAtTime(low,end);
+      gain.linearRampToValueAtTime(normal,end+.65);
+      this.titleDuckUntil=end+.65;
       // Nessuna dipendenza da requestAnimationFrame e nessun fattore persistente.
       this.titleDuckFactor=1;
     }
@@ -734,6 +738,15 @@ const IMAGES = {};
       if(!Context)return;
       try{this.sfxContext=new Context();}
       catch(error){console.warn("AudioContext non disponibile:",error);return;}
+      this.sfxContext.addEventListener("statechange",()=>{
+        if(this.sfxContext.state!=="running"){
+          for(const source of this.titleEnterVoices){try{source.stop();}catch(e){}}
+          this.titleEnterVoices.clear();
+          this.resetTitleDucking();
+          for(const source of this.activeSfx){try{source.stop();}catch(e){}}
+          this.activeSfx.clear();
+        }
+      });
       // Limita i download/decodifiche simultanei per non appesantire il gioco.
       const keys=Object.keys(this.files).filter(key=>key.startsWith("sfx_") && key!=="sfx_van_engine");
       const priority=["sfx_title_enter","sfx_select","sfx_logo","sfx_pickup_bombola"];
@@ -741,52 +754,60 @@ const IMAGES = {};
         const ai=priority.indexOf(a),bi=priority.indexOf(b);
         return (ai<0?100:ai)-(bi<0?100:bi);
       });
+      this.titleReady=new Promise(resolve=>{this.resolveTitleReady=resolve;});
       let index=0;
       const worker=async()=>{
         while(index<keys.length){
           const key=keys[index++];
           try{
-            const response=await fetch(this.url(key));
+            const response=await fetch(await this.prepareOfflineAudio(key));
             if(!response.ok)throw new Error("HTTP "+response.status);
             const data=await response.arrayBuffer();
             const buffer=await this.sfxContext.decodeAudioData(data);
             this.sfxBuffers.set(key,buffer);
           }catch(error){console.warn("Effetto non preparato:",key,error);}
+          finally{if(key==="sfx_title_enter")this.resolveTitleReady();}
         }
       };
-      for(let i=0;i<Math.min(3,keys.length);i++)worker();
+      this.sfxReady=Promise.all(Array.from({length:Math.min(3,keys.length)},()=>worker()));
     }
     unlock(){
-      const firstUnlock=!this._unlocked;
       this._unlocked=true;
-      if(this.sfxContext && this.sfxContext.state!=="running"){
-        this.sfxContext.resume().catch(()=>{});
+      // Build the title route even while suspended, before any media play().
+      this.track("music_title");
+      this.ensureTitleMusicGain();
+      const ctx=this.sfxContext;
+      if(ctx && ctx.state!=="running"){
+        const epoch=this.audioEpoch;
+        return ctx.resume().then(()=>{
+          if(epoch===this.audioEpoch && this.musicKey && !this.paused){
+            this.lastMusicAttempt.delete(this.musicKey);
+            this._start(this.musicKey);
+          }
+        }).catch(()=>{});
       }
-      if((firstUnlock||this.sfxContext?.state!=="running") && this.musicKey&&!this.paused){
-        // Non applicare il cooldown al primo gesto dopo un autoplay bloccato.
-        this.lastMusicAttempt.delete(this.musicKey);
-        this._start(this.musicKey);
-      }
+      if(this.musicKey && !this.paused)this._start(this.musicKey);
+      return Promise.resolve();
     }
     tryAutoplay(){if(this.musicKey)this._start(this.musicKey);}
     setEnabled(value){
       this.enabled=!!value;
-      if(!this.enabled){for(const a of this.tracks.values())a.pause();if(this.vanEngine)this.vanEngine.pause();}
+      if(!this.enabled){this.cancelTransientAudio();for(const a of this.tracks.values())a.pause();if(this.vanEngine)this.vanEngine.pause();}
       else if(!this.paused){if(this.musicKey)this._start(this.musicKey);if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);}
     }
     _start(key){
       // Mantiene le regole originali (autoplay, volume, pausa e cambio scena).
       // Aspetta soltanto che l'URL locale del file COMPLETO sia disponibile.
-      if(!this.enabled||this.paused)return;
+      if(!this.enabled||this.paused||document.hidden)return;
       const a=this.track(key);if(!a)return;
+      const epoch=this.audioEpoch;
       this.prepareOfflineAudio(key).then(url=>{
-        if(!this.enabled||this.paused||this.musicKey!==key)return;
+        if(epoch!==this.audioEpoch||!this.enabled||this.paused||document.hidden||this.musicKey!==key)return;
         if(a.src!==url)a.src=url;
-        if(key==="music_title")this.ensureTitleMusicGain();
+        if(key==="music_title" && (!this.ensureTitleMusicGain() || this.sfxContext.state!=="running"))return;
         if(key==="music_title" && this.titleMusicGain){
           a.volume=1;
-          if(!this.sfxContext || this.sfxContext.currentTime>=this.titleDuckUntil)
-            this.titleMusicGain.gain.value=this.trackVolume(key);
+          // Gain was initialized before play(); no per-frame automation writes.
         }else a.volume=this.trackVolume(key);
         if(a.paused){
           const now=performance.now();
@@ -819,13 +840,19 @@ const IMAGES = {};
       this.playMusic(key);
     }
     playSfxFallback(key,volume=1){
+      const epoch=this.audioEpoch, requestedAt=performance.now();
       this.prepareOfflineAudio(key).then(url=>{
+        if(epoch!==this.audioEpoch || performance.now()-requestedAt>180)return;
         if(!this.enabled||!this._unlocked||!this.files[key])return;
         if(this.paused&&key!=="sfx_pause")return;
         const now=performance.now(), last=this.lastSfx.get(key)||0;
         if(now-last<65)return;
         this.lastSfx.set(key,now);
         const a=new Audio();
+        this.fallbackVoices.add(a);
+        const release=()=>this.fallbackVoices.delete(a);
+        a.addEventListener("ended",release,{once:true});
+        a.addEventListener("error",release,{once:true});
         a.preload="auto";
         a.src=url;
         a.volume=key==="sfx_damage" ? 1 : key==="sfx_coffee_key_fanfare" ? .99 : Math.max(0,Math.min(1,this.sfxVolume*volume*(key==="sfx_title_enter"?1.9:key==="sfx_select"?1.9:key==="sfx_logo"?1.95:1)));
@@ -836,67 +863,49 @@ const IMAGES = {};
           a.addEventListener('pause',()=>{this.coffeeFanfarePlaying=false;this.refreshMusicVolume();},{once:true});
         }
         a.play().catch(()=>{
+          release();
           if(key==="sfx_coffee_key_fanfare"){
             this.coffeeFanfarePlaying=false;this.refreshMusicVolume();
           }
         });
       }).catch(()=>{});
     }
+    cancelTransientAudio(){
+      this.audioEpoch++; this.titleRequest++;
+      for(const voice of this.titleEnterVoices){try{voice.stop();}catch(e){}}
+      this.titleEnterVoices.clear();
+      for(const voice of this.fallbackVoices){voice.pause();voice.removeAttribute("src");voice.load();}
+      this.fallbackVoices.clear();
+      this.resetTitleDucking();
+    }
     playTitleEnterGesture(){
-      if(!this.enabled)return;
-      this.duckTitleMusic();
-      this.unlock();
+      if(!this.enabled || this.paused || scene.name!=="START")return;
       this.titleEnterGestureAt=performance.now();
-      // Ogni pressione usa un elemento nuovo: su iOS riavviare un singolo
-      // elemento con pause/currentTime=0 può talvolta produrre silenzio.
-      // L'URL blob è già preparato dal preloader (anche offline).
-      // Su WebAudio il suono INVIO può essere amplificato oltre il limite 1.0
-      // degli elementi HTMLAudio. Il compressore evita picchi eccessivi.
-      const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
-      if(ctx && ctx.state==="running" && buffer){
-        try{
-          const source=ctx.createBufferSource();
-          const gain=ctx.createGain();
-          const limiter=ctx.createDynamicsCompressor();
-          limiter.threshold.value=-12;
-          limiter.knee.value=6;
-          limiter.ratio.value=8;
-          limiter.attack.value=.003;
-          limiter.release.value=.13;
-          source.buffer=buffer;
-          gain.gain.value=1.65;
-          source.connect(gain);gain.connect(limiter);limiter.connect(ctx.destination);
-          source.onended=()=>{source.disconnect();gain.disconnect();limiter.disconnect()};
-          source.start(0);
-          return;
-        }catch(error){console.warn("INVIO WebAudio: fallback HTMLAudio",error)}
-      }
-      const url=this.offlineAudioUrls.get("sfx_title_enter") || this.url("sfx_title_enter");
-      const a=new Audio(url);
-      a.preload="auto";
-      a.volume=1;
-      if(!this.titleEnterVoices)this.titleEnterVoices=new Set();
-      this.titleEnterVoices.add(a);
-      const release=()=>this.titleEnterVoices.delete(a);
-      a.addEventListener("ended",release,{once:true});
-      a.addEventListener("error",release,{once:true});
-      // Eseguito immediatamente nel gesto touch, senza attendere Promise.
-      try{
-        const playing=a.play();
-        if(playing&&playing.catch)playing.catch(()=>{
-          release();
-          // WebAudio resta una seconda via solo se già attivo.
-          const ctx=this.sfxContext,buffer=this.sfxBuffers.get("sfx_title_enter");
-          if(ctx&&ctx.state==="running"&&buffer){
-            try{const source=ctx.createBufferSource();const gain=ctx.createGain();source.buffer=buffer;gain.gain.value=1.8;source.connect(gain);gain.connect(ctx.destination);source.start();source.onended=()=>{source.disconnect();gain.disconnect()}}catch(e){}
-          }
-        });
-      }catch(e){release()}
-      // Non interrompere la voce di INVIO in resetForNewGame:
-      // l'effetto deve poter completare anche durante la transizione.
+      const at=this.titleEnterGestureAt, epoch=this.audioEpoch, request=++this.titleRequest;
+      const ready=this.unlock();
+      const play=()=>{
+        const ctx=this.sfxContext, buffer=this.sfxBuffers.get("sfx_title_enter");
+        // Never queue a gesture behind loading, interruption, reset, or later input.
+        if(epoch!==this.audioEpoch || request!==this.titleRequest || performance.now()-at>180 ||
+           !this.enabled || this.paused || document.hidden || scene.name!=="START" ||
+           !ctx || ctx.state!=="running" || !buffer)return;
+        const source=ctx.createBufferSource(), gain=ctx.createGain(), limiter=ctx.createDynamicsCompressor();
+        source.buffer=buffer;
+        gain.gain.value=1.65;
+        limiter.threshold.value=-12; limiter.knee.value=6; limiter.ratio.value=8;
+        limiter.attack.value=.003; limiter.release.value=.13;
+        source.connect(gain); gain.connect(limiter); limiter.connect(ctx.destination);
+        this.titleEnterVoices.add(source);
+        source.onended=()=>{this.titleEnterVoices.delete(source);source.disconnect();gain.disconnect();limiter.disconnect();};
+        try{source.start();this.duckTitleMusic(buffer.duration);}
+        catch(e){source.onended();}
+      };
+      if(this.sfxContext?.state==="running")play();
+      else ready.then(play);
     }
     playSfx(key,volume=1){
       key=this.alias[key]||key;
+      if(key==="sfx_title_enter")return this.playTitleEnterGesture();
       // Solo il gesto INVIO del titolo attiva ducking: mai playSfx generico.
       if(!this.enabled||!this._unlocked||(!this.files[key]))return;
       if(this.paused&&key!=="sfx_pause")return;
@@ -967,6 +976,7 @@ const IMAGES = {};
       return Promise.resolve(); // non blocca fade o schermate durante la riproduzione
     }
     pauseAll(){
+      this.cancelTransientAudio();
       this.paused=true;
       for(const a of this.tracks.values())a.pause();
       if(this.vanEngine)this.vanEngine.pause();
@@ -981,7 +991,7 @@ const IMAGES = {};
       if(typeof van!=="undefined"&&van.driving)this.syncVanEngine(true);
     }
     resetForNewGame(){
-      this.resetTitleDucking();
+      this.cancelTransientAudio();
       this.syncVanEngine(false);
       this.stopMusic();
       for(const a of this.tracks.values()){a.pause();try{a.currentTime=0;}catch(e){}}
@@ -1008,22 +1018,23 @@ const audio = new AudioManager();
   let frameDeltaSec = 1/60;
   let lastFrameClockMs = performance.now();
 
-  function userGesture() {
+  function userGesture(e) {
     audio.unlock();
-    if(audio.sfxContext && audio.sfxContext.state!=="running"){
-      audio.sfxContext.resume().catch(()=>{});
-    }
-    // Nella schermata di apertura l'audio resta silenzioso fino a INVIO.
+    if(e.type==="keydown" && e.key==="Enter" && !e.repeat && scene.name==="START")
+      audio.playTitleEnterGesture();
   }
   addEventListener("pointerdown", userGesture, {passive:true});
   addEventListener("touchstart", userGesture, {passive:true});
-  // Qualsiasi tasto sblocca l'audio: non è più necessario cliccare sul gioco.
   addEventListener("keydown", userGesture, {passive:true});
-  // Tornando nell'app dopo inattività lunga, riattiva gli SFX al primo gesto.
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden && audio && audio.sfxContext && audio.sfxContext.state!=="running"){
-      audio.sfxContext.resume().catch(()=>{});
-    }
+    if(document.hidden){
+      if(scene.name==="NOTICE")opening.leaving=false;
+      audio.cancelTransientAudio();
+      for(const source of audio.activeSfx){try{source.stop();}catch(e){}}
+      audio.activeSfx.clear();
+      for(const track of audio.tracks.values())track.pause();
+      if(audio.vanEngine)audio.vanEngine.pause();
+    }else audio.unlock();
   });
 
 
@@ -2020,7 +2031,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
   function beginStartEnterFx(){
     if(startEnterFx.active || fade.dir!==0) return;
     startEnterFx.active=true;
-    if(performance.now()-audio.titleEnterGestureAt>650) audio.playSfx("sfx_title_enter",1);
+    // Sound belongs to the actual Enter gesture, never the animation frame.
     startEnterFx.startedAt=performance.now();
     startEnterFx.fadeStarted=false;
     startEnterFx.oldFadeSpeed=null;
@@ -10110,11 +10121,16 @@ function tick() {
       drawOpeningNotice();
       if(input.wasPressed("Enter") && !opening.leaving && fade.dir===0){
         opening.leaving=true;
-        fade.start(true,()=>{
+        const epoch=audio.audioEpoch;
+        Promise.resolve(audio.titleReady).then(()=>{
+          if(epoch!==audio.audioEpoch || scene.name!=="NOTICE")return;
+          // If decoding failed, keep the game usable; never substitute a different-volume player.
+          fade.start(true,()=>{
           opening.revealStartedAt=performance.now();
           scene.set("START");
           audio.playMusic("music_title");
           opening.leaving=false;
+          });
         });
       }
     } else if (scene.name === "START") {

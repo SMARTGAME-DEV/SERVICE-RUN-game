@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.29" />
+  <meta name="service-run-mobile-version" content="1.30" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -587,6 +587,7 @@ const IMAGES = {};
       this.effects=new Map(); this.activeSfx=new Set(); this.lastSfx=new Map();
       this.sfxContext=null; this.sfxBuffers=new Map(); this.sfxLoading=new Map();
       this.musicVolume=.26; this.sfxVolume=.90; this.maxSfx=7;
+      this.levelMusicNodes=new Map(); // one media source + gain per exterior/interior track
       this.coffeeFanfarePlaying=false; // abbassa soltanto la musica mentre suona la fanfara della chiavetta
       this.titleDuckFactor=1; this.titleDuckRun=0; // solo musica del titolo durante INVIO
       this.titleMusicGain=null; this.titleMusicSource=null; this.titleDuckUntil=0;
@@ -676,7 +677,30 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .19 * this.titleDuckFactor : (key==="music_level" || key==="music_interior") ? .16 : key==="music_flash" ? .19 : this.musicVolume);
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .19 * this.titleDuckFactor : (key==="music_level" || key==="music_interior") ? .19 : key==="music_flash" ? .19 : this.musicVolume);
+    }
+    applyMusicVolume(key,a){
+      if(key!=="music_level" && key!=="music_interior"){
+        a.volume=this.trackVolume(key);
+        return true;
+      }
+      const ctx=this.sfxContext;
+      if(!ctx || ctx.state==="closed")return false;
+      let nodes=this.levelMusicNodes.get(key);
+      if(!nodes){
+        // Route BEFORE play(): never expose an unattenuated HTML audio path.
+        // Retain the source across scene changes, pauses and R (one per element).
+        const gain=ctx.createGain();
+        gain.gain.value=this.trackVolume(key);
+        const source=ctx.createMediaElementSource(a);
+        source.connect(gain); gain.connect(ctx.destination);
+        nodes={source,gain};
+        this.levelMusicNodes.set(key,nodes);
+      }
+      // HTML volume must be unity: the GainNode alone controls the signal.
+      a.volume=1;
+      nodes.gain.gain.setValueAtTime(this.trackVolume(key),ctx.currentTime);
+      return true;
     }
     refreshMusicVolume(){
       for(const [key,a] of this.tracks){
@@ -685,7 +709,7 @@ const IMAGES = {};
           a.volume=1;
           // The dedicated duck envelope owns this AudioParam.
         }else{
-          a.volume=this.trackVolume(key);
+          this.applyMusicVolume(key,a);
         }
       }
     }
@@ -864,7 +888,7 @@ const IMAGES = {};
       this.prepareOfflineAudio(key).then(url=>{
         if(epoch!==this.audioEpoch||!this.enabled||this.paused||document.hidden||this.musicKey!==key)return;
         if(a.src!==url)a.src=url;
-        a.volume=this.trackVolume(key);
+        if(!this.applyMusicVolume(key,a))return;
         if(a.paused){
           const now=performance.now();
           if(now-(this.lastMusicAttempt.get(key)||-10000)<800)return;
@@ -1060,6 +1084,13 @@ const IMAGES = {};
       // hanno percorsi indipendenti su iOS.
       if(!this.sfxContext || this.sfxContext.state==="closed"){
         this.titleMusicGain=null;this.titleMusicBuffer=null;this.titleAssetsReady=null;
+        // A media element cannot be attached again to a new AudioContext.
+        // Recreate ONLY these two elements if the old context was closed.
+        for(const [key,nodes] of this.levelMusicNodes){
+          nodes.source.disconnect();nodes.gain.disconnect();
+          this.tracks.delete(key);
+        }
+        this.levelMusicNodes.clear();
         this.prepareSfx();
         this.prepareTitleAssets();
       }

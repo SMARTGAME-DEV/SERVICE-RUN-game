@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.30" />
+  <meta name="service-run-mobile-version" content="1.31" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -677,7 +677,7 @@ const IMAGES = {};
     }
     trackVolume(key){
       if(key.startsWith("jingle_"))return this.jingleVolume;
-      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .19 * this.titleDuckFactor : (key==="music_level" || key==="music_interior") ? .19 : key==="music_flash" ? .19 : this.musicVolume);
+      return this.coffeeFanfarePlaying ? .10 : (key==="music_title" ? .22 * this.titleDuckFactor : (key==="music_level" || key==="music_interior") ? .22 : key==="music_flash" ? .19 : this.musicVolume);
     }
     applyMusicVolume(key,a){
       if(key!=="music_level" && key!=="music_interior"){
@@ -790,7 +790,7 @@ const IMAGES = {};
       if(!this.ensureTitleMusicGain())return; // mai attenuazioni persistenti via volume HTML iOS
       const ctx=this.sfxContext, gain=this.titleMusicGain.gain;
       const t=ctx.currentTime;
-      const normal=.19, low=normal*.10;
+      const normal=.22, low=normal*.10;
       const held=gain.value;
       if(gain.cancelAndHoldAtTime)gain.cancelAndHoldAtTime(t);
       else {gain.cancelScheduledValues(t);gain.setValueAtTime(held,t);}

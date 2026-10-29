@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.34" />
+  <meta name="service-run-mobile-version" content="1.35" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -2088,7 +2088,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     return {
       girl:playerArea(GIRL_IDLE,W()*0.198-13),
       boy:playerArea(PLAYER_IDLE,W()*0.812),
-      enter:{x:W()/2-110,y:H()-92,w:220,h:220*293/960}
+      enter:{x:W()/2-110,y:H()-114,w:220,h:220*293/960}
     };
   }
 
@@ -2598,9 +2598,9 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
       if(scene.name!=="PLAYER_SELECT" || !playerSelectConfirming) return;
       girlMode=(playerSelectChoice==="girl");
       fade.start(true,()=>{
+        showInfoOverlay=true;
         setScene("LEVEL");
         resetLevel();
-        showInfoOverlay=true;
       },()=>{
         playerSelectConfirming=false;
         playerSelectConfirmStartedAt=0;
@@ -10319,9 +10319,9 @@ function tick() {
 
     } else if (scene.name === "INTRO") {
       // intro schermata disattivata: usa overlay sopra il livello
+      showInfoOverlay = true;
       setScene("LEVEL");
       resetLevel();
-      showInfoOverlay = true;
 
     } else if (scene.name === "LEVEL") {
       updateLevel();

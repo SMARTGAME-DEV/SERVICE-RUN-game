@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.36" />
+  <meta name="service-run-mobile-version" content="1.37" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -20,7 +20,7 @@ b{font-weight:800}
  html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto;flex:none;max-width:none;max-height:none}
  #touchControls{display:block;position:fixed;inset:0;z-index:40;pointer-events:none;user-select:none;-webkit-user-select:none}
  .touchCross{position:absolute;bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:6px;pointer-events:none;--btn:clamp(44px,min(8vw,16vh),66px)}
- .touchCross.left{left:max(10px,env(safe-area-inset-left))}.touchCross.right{right:max(10px,env(safe-area-inset-right))}
+ .touchCross.left{left:max(32px,env(safe-area-inset-left));--btn:clamp(56px,min(10vw,20vh),82px)}.touchCross.right{right:max(10px,env(safe-area-inset-right))}
  .touchCross.center{left:50%;transform:translateX(-50%);gap:12px}
  .touchKey{position:relative;width:var(--btn);height:var(--btn);appearance:none;pointer-events:auto;touch-action:none;-webkit-tap-highlight-color:transparent;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0;opacity:.93}
  .touchCross.center .touchKey{width:clamp(70px,11vw,100px);height:44px}
@@ -28,6 +28,11 @@ b{font-weight:800}
  .controlSprite img{position:absolute;max-width:none;pointer-events:none;user-select:none;-webkit-user-drag:none}
  .touchKey.active{filter:brightness(1.25);transform:translateY(2px)}
  .touchKey:focus-visible{outline:2px solid white;outline-offset:3px}
+
+ .touchCross.quiz{right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + clamp(44px,min(8vw,16vh),66px) + 10px)}
+ .touchCross.quiz[hidden]{display:none}
+ .touchKey.correct{filter:drop-shadow(0 0 7px #39ff14) brightness(1.35);background:#00ff5b77;border-radius:12px}
+ .touchKey.wrong{filter:drop-shadow(0 0 7px red);background:#ff0000bb;border-radius:12px}
  #rotateHint{display:none}
  #mobileNameHelp{display:none}
  body.mobile-keyboard #touchControls, body.mobile-keyboard #mobileEnterWrap{display:none!important}
@@ -35,6 +40,13 @@ b{font-weight:800}
  body.mobile-keyboard #mobileNameHelp{display:block;position:fixed;left:0;right:0;bottom:0;z-index:1001;text-align:center;padding:7px;background:#11302a;color:#fff;font:14px system-ui}
 }
 @media (pointer:coarse) and (max-width:1100px) and (orientation:portrait){#rotateHint{display:flex;position:fixed;inset:0;z-index:60;background:#071720f5;color:white;align-items:center;justify-content:center;text-align:center;font:bold 22px system-ui;padding:25px;pointer-events:none}}
+
+#resetConfirm[hidden]{display:none}
+#resetConfirm{position:fixed;inset:0;z-index:1002;background:#0009;display:flex;align-items:center;justify-content:center;touch-action:none}
+#resetConfirm .resetBox{box-sizing:border-box;width:min(580px,88vw);padding:24px;background:#000;border:3px solid #ff3838;border-radius:18px;text-align:center;color:#ff3838;font:900 clamp(16px,2.5vw,24px) system-ui}
+#resetConfirm .resetChoices{display:flex;justify-content:center;gap:30px;margin-top:22px}
+#resetConfirm button{width:66px;height:66px;border:2px solid #ff3838;border-radius:10px;background:#000;color:#ff3838;font:900 22px system-ui;touch-action:none}
+#resetConfirm button:active{background:#6b1111}
 </style>
 </head>
 <body>
@@ -46,7 +58,9 @@ b{font-weight:800}
 <div class="touchCross left"><button type="button" class="touchKey" data-key="ArrowLeft" aria-label="Sinistra"><span class="controlSprite" style="aspect-ratio:763/661"><img src="assets/images/sprite_freccia_sinistra.png" alt="" draggable="false" style="width:130.40629%;height:106.80787%;left:-14.54784%;top:-3.32829%"></span></button><button type="button" class="touchKey" data-key="ArrowRight" aria-label="Destra"><span class="controlSprite" style="aspect-ratio:762/660"><img src="assets/images/sprite_freccia_destra.png" alt="" draggable="false" style="width:129.13386%;height:106.96970%;left:-14.96063%;top:-3.48485%"></span></button></div>
 <div class="touchCross center"><button type="button" class="touchKey" data-key="KeyR" aria-label="Reset"><span class="controlSprite" style="aspect-ratio:1915/696"><img src="assets/images/Pulsante_rosso_RESET.png" alt="" draggable="false" style="width:111.01828%;height:106.32184%;left:-5.53525%;top:-3.73563%"></span></button><button type="button" class="touchKey" data-key="KeyP" aria-label="Pausa"><span class="controlSprite" style="aspect-ratio:1615/693"><img src="assets/images/Pulsante_arancione_PAUSA.png" alt="" draggable="false" style="width:109.84520%;height:127.99423%;left:-4.95356%;top:-15.58442%"></span></button></div>
 <div class="touchCross right"><button type="button" class="touchKey" data-key="KeyF" aria-label="F"><span class="controlSprite" style="aspect-ratio:952/902"><img src="assets/images/Pulsante_verde_F.png" alt="" draggable="false" style="width:131.72269%;height:139.02439%;left:-15.86134%;top:-19.51220%"></span></button><button type="button" class="touchKey" data-key="Space" aria-label="Salta"><span class="controlSprite" style="aspect-ratio:1044/969"><img src="assets/images/Pulsante_SALTA.png" alt="" draggable="false" style="width:120.11494%;height:129.41176%;left:-10.05747%;top:-15.99587%"></span></button><button type="button" class="touchKey" data-key="KeyE" aria-label="E"><span class="controlSprite" style="aspect-ratio:950/901"><img src="assets/images/Pulsante_verde_E.png" alt="" draggable="false" style="width:132.00000%;height:139.17869%;left:-16.00000%;top:-19.53385%"></span></button></div>
+<div id="quizControls" class="touchCross quiz" hidden><button type="button" class="touchKey" data-key="KeyA" aria-label="Risposta A"><span class="controlSprite" style="aspect-ratio:626/610"><img src="assets/images/sprite_tasto_A.png" alt="" draggable="false" style="width:115.65495%;height:116.72131%;left:-11.18211%;top:-7.86885%"></span></button><button type="button" class="touchKey" data-key="KeyB" aria-label="Risposta B"><span class="controlSprite" style="aspect-ratio:644/610"><img src="assets/images/sprite_tasto_B.png" alt="" draggable="false" style="width:112.42236%;height:113.60656%;left:-5.43478%;top:-5.08197%"></span></button><button type="button" class="touchKey" data-key="KeyC" aria-label="Risposta C"><span class="controlSprite" style="aspect-ratio:631/610"><img src="assets/images/sprite_tasto_C.png" alt="" draggable="false" style="width:111.88590%;height:115.57377%;left:-3.96197%;top:-9.01639%"></span></button></div>
 </div>
+<div id="resetConfirm" role="dialog" aria-modal="true" aria-labelledby="resetQuestion" hidden><div class="resetBox"><div id="resetQuestion">SEI SICURO DI VOLER RICOMINCIARE?</div><div class="resetChoices"><button id="resetYes" type="button">SI</button><button id="resetNo" type="button">NO</button></div></div></div>
 <div id="rotateHint">↻&nbsp; Ruota il telefono in orizzontale</div><div id="mobileNameHelp">Scrivi il nome con la tastiera e conferma con INVIO</div>
 <div id="mobileInstallGate" style="display:none;position:fixed;inset:0;z-index:9999;background:#0b1018;color:#f0fff4;font:600 19px system-ui;align-items:center;justify-content:center;text-align:center;padding:28px;flex-direction:column;gap:16px"><strong>SMARTGASmed – SERVICE RUN</strong><span>Per giocare su smartphone, installa il gioco dalla schermata iniziale.</span><a href="./index.html" style="background:#53d68b;color:#062418;text-decoration:none;border-radius:12px;padding:14px 22px">TORNA ALL’INSTALLAZIONE</a></div>
 <script>
@@ -2650,6 +2664,62 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
   }
 
   // ====== Pausa (P) ======
+
+  const resetConfirm = {active:false,wasPaused:false,openedAt:0};
+  const resetConfirmEl=document.getElementById('resetConfirm');
+  function openResetConfirm(){
+    if(resetConfirm.active)return;
+    resetConfirm.active=true;resetConfirm.wasPaused=gamePaused;resetConfirm.openedAt=performance.now();
+    releaseAllTouchKeys();input.down.clear();input.pressed.clear();
+    if(!gamePaused)audio.pauseAll();
+    resetConfirmEl.hidden=false;
+  }
+  function closeResetConfirm(confirmed){
+    if(!resetConfirm.active)return;
+    const wasPaused=resetConfirm.wasPaused,dt=performance.now()-resetConfirm.openedAt;
+    resetConfirm.active=false;resetConfirmEl.hidden=true;
+    releaseAllTouchKeys();input.down.clear();input.pressed.clear();
+    lastFrameClockMs=performance.now();
+    if(confirmed){resetGame();return;}
+    // Modal time must not advance a dialogue or pickup animation.
+    if(tower2OldDialogue.active){tower2OldDialogue.startedAt+=dt;tower2OldDialogue.selectedAt+=dt;tower2OldDialogue.blackStarted+=dt;}
+    if(fourToolPickup.active)fourToolPickup.start+=dt;
+    if(!wasPaused)audio.resumeAll();
+  }
+  document.getElementById('resetYes').addEventListener('click',()=>closeResetConfirm(true));
+  document.getElementById('resetNo').addEventListener('click',()=>closeResetConfirm(false));
+  function dismissMobileStory(){
+    if(resetConfirm.active||gamePaused)return false;
+    if(fourToolPickup.active){
+      if(!fourToolPickup.snapshotReady||performance.now()-fourToolPickup.start<=450)return false;
+      fourToolPickup.active=false;fourToolPickup.item=null;fourToolPickup.snapshotReady=false;
+    }else if(bossDialogue.active&&scene.name==='SMARTGAS_INTERIOR'){
+      bossDialogue.active=false;game.vanUnlocked=true;p.vx=0;p.vy=0;
+    }else return false;
+    releaseAllTouchKeys();input.down.clear();input.pressed.clear();return true;
+  }
+  document.addEventListener('pointerdown',e=>{
+    const b=e.target.closest?.('[data-key]');
+    if(b&&['KeyP','KeyR'].includes(b.dataset.key))return;
+    if(dismissMobileStory()){e.preventDefault();e.stopImmediatePropagation();}
+  },{capture:true,passive:false});
+  function mobileDismissKey(){return [...input.pressed].some(k=>!['KeyP','KeyR','Mouse','Touch'].includes(k));}
+  function updateQuizControls(){
+    const d=tower2OldDialogue,el=document.getElementById('quizControls');
+    el.hidden=resetConfirm.active||gamePaused||scene.name!=='TOWER2_ROOM'||!d.active||
+      !['quiz','quizConfirm'].includes(d.phase)||!tower2OldTextComplete();
+    const q=d.quizQuestions[d.quizIndex];
+    el.querySelectorAll('button').forEach((b,i)=>{
+      const chosen=!el.hidden&&d.phase==='quizConfirm'&&d.selected===tower2OldKeys[i];
+      b.classList.toggle('correct',chosen&&q?.correct===i);
+      b.classList.toggle('wrong',chosen&&q?.correct!==i);
+    });
+  }
+  function drawMobileCommandLine(prefix,x,y,pauseLabel='PAUSA'){
+    const pieces=[[prefix+'   •   ','#fff'],[pauseLabel,'#ff9e24'],['   •   ','#fff'],['RESET','#ff4444']];
+    ctx.save();ctx.textAlign='left';let px=x-pieces.reduce((v,[text])=>v+ctx.measureText(text).width,0)/2;
+    for(const [text,color] of pieces){ctx.fillStyle=color;ctx.fillText(text,px,y);px+=ctx.measureText(text).width;}ctx.restore();
+  }
   let gamePaused = false;
   const pauseSnapshot = document.createElement("canvas");
   pauseSnapshot.width = canvas.width;
@@ -2888,9 +2958,9 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
       ctx.lineTo(controlsX,controlsY+cr); ctx.quadraticCurveTo(controlsX,controlsY,controlsX+cr,controlsY); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="#ffffff";
       ctx.font="900 17px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-      ctx.fillText("← →  MUOVI   •   SPAZIO  SALTA   •   E  INTERAGISCI", GAME_W/2, controlsY+22);
+      ctx.fillText("← →  MUOVI   •   ↑  SALTA   •   E  INTERAGISCI", GAME_W/2, controlsY+22);
       ctx.font="900 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-      ctx.fillText("F  ENTRA/ESCI   •   P  RIPRENDI   •   R  RESET", GAME_W/2, controlsY+46);
+      drawMobileCommandLine("F  ENTRA/ESCI",GAME_W/2,controlsY+46,"PAUSA/RIPRENDI");
       ctx.restore();
 
       ctx.imageSmoothingEnabled = false;
@@ -2966,7 +3036,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
           ctx.restore();
 
           ctx.drawImage(gasketImg,gx,gy,gw,gh);
-          ctx.font='900 31px "Comic Sans MS", "Comic Sans", cursive';
+          ctx.font='700 31px "Comic Sans MS", "Comic Sans", Arial, sans-serif';
           ctx.textAlign="left"; ctx.textBaseline="middle";
           ctx.lineWidth=4; ctx.strokeStyle="rgba(0,0,0,.88)";
           ctx.strokeText(o2GasketCount+"/"+O2_GASKET_TOTAL,gx+gw+12,gy+gh/2+4);
@@ -3410,6 +3480,10 @@ function updateLevel() {
 
     // barra
     ctx.drawImage(barra, hudX, hudY, hudW, hudH);
+    ctx.save();ctx.translate(hudX,hudY);ctx.scale(hudW/1536,hudH/1024);
+    ctx.fillStyle='#252d30';ctx.fillRect(1190,595,286,30);
+    ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='900 31px Arial';ctx.fillStyle='#ffff66';ctx.fillText('↑',1198,610);
+    ctx.font='700 27px Arial';ctx.fillStyle='#fff';ctx.fillText('= Salta',1241,610);ctx.restore();
 
     // Orologio HUD sovrapposto: copre completamente quello stampato nella barra.
     // Una sola lancetta che compie un giro durante i 30 minuti.
@@ -5538,11 +5612,11 @@ function drawInterior() {
     ctx.textBaseline = "middle";
     ctx.font = `900 ${Math.max(15, Math.floor(17 * s))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
 
-    const cmds1 = "COMANDI: ← → = muovi   •   SPAZIO = salta";
-    const cmds2 = "F = entra/esci edificio   •   E = interagisci   •   P = pausa   •   R = reset";
+    const cmds1 = "COMANDI: ← → = muovi   •   ↑ = salta";
+    const cmds2 = "F = entra/esci   •   E = interagisci";
 
     ctx.fillText(cmds1, cmdX + cmdW/2, cmdY + cmdH * 0.42);
-    ctx.fillText(cmds2, cmdX + cmdW/2, cmdY + cmdH * 0.62);
+    drawMobileCommandLine(cmds2,cmdX+cmdW/2,cmdY+cmdH*.62);
 
     ctx.restore();
 
@@ -6703,7 +6777,7 @@ function updateLevel() {
     }
 
         // R reset level (solo in LEVEL)
-    if (input.wasPressed("KeyR")) resetLevel();
+
   }
 
   
@@ -7182,7 +7256,7 @@ function updateLevel() {
     const startY=ty-(Math.min(lines.length,3)-1)*lineHeight/2;
     lines.slice(0,3).forEach((line,i)=>ctx.fillText(line,bx+bw/2,startY+i*lineHeight));
     ctx.font="bold 18px system-ui";ctx.fillStyle="#b9f4d7";
-    ctx.fillText("PREMI E",W()/2,Math.min(H()-15,by+bh+20));
+
     ctx.restore();
   }
   function checkBossContact(g) {
@@ -7501,6 +7575,14 @@ function updateLevel() {
       w:g.w*k.w,h:g.h*k.h
     }));
   }
+  const tower2PlatformHighlights=new Map();
+  function platformHighlight(img,crop){
+    if(tower2PlatformHighlights.has(img))return tower2PlatformHighlights.get(img);
+    const c=document.createElement('canvas');c.width=crop[2];c.height=crop[3];
+    const cctx=c.getContext('2d');cctx.drawImage(img,...crop,0,0,c.width,c.height);
+    cctx.globalCompositeOperation='source-in';cctx.fillStyle='rgba(255,255,255,.65)';cctx.fillRect(0,0,c.width,c.height);
+    tower2PlatformHighlights.set(img,c);return c;
+  }
   function drawTower2Platforms(g){
     for(const k of tower2Platforms(g)){
       const img=IMAGES["tower2_platform_"+k.sprite];
@@ -7515,10 +7597,9 @@ function updateLevel() {
       // Lampeggio chiaro per circa un secondo, limitato alla sagoma PNG.
       if(k.id===tower2PlatformFlashId && t<tower2PlatformFlashUntil &&
          Math.floor((tower2PlatformFlashUntil-t)/6)%2===0){
-        ctx.filter="brightness(1.9)";
-        if(k.mirror)ctx.drawImage(img,...crop,0,k.y,k.w,k.h);
-        else ctx.drawImage(img,...crop,k.x,k.y,k.w,k.h);
-        ctx.filter="none";
+        const highlight=platformHighlight(img,crop);
+        if(k.mirror)ctx.drawImage(highlight,0,k.y,k.w,k.h);
+        else ctx.drawImage(highlight,k.x,k.y,k.w,k.h);
       }
       ctx.restore();
     }
@@ -7672,7 +7753,7 @@ function updateLevel() {
     promise:"Bravissimo! Una promessa è una promessa. Ti spiego come si fa...",
     promiseGirl:"Bravissima! Una promessa è una promessa. Ti spiego come si fa...",
     reward:"...BENE! Ora, se premi una seconda volta il tasto di salto mentre sei in aria, puoi fare un doppio salto. Buona fortuna!",
-    repeat:"Te l'ho insegnato! Salta e premi di nuovo SPAZIO mentre sei in aria. Buona fortuna!"
+    repeat:"Te l'ho insegnato! Salta e premi di nuovo ↑ mentre sei in aria. Buona fortuna!"
   };
   // Archivio completo: 40 domande; tre diverse per tentativo, senza categorie.
   const tower2OldQuestionBank=[
@@ -8077,7 +8158,7 @@ function updateLevel() {
         "correct": 2
     }
 ];
-  const tower2OldKeys=["E","F","SPAZIO"];
+  const tower2OldKeys=["A","B","C"];
   function tower2OldPickQuestions(){
     const d=tower2OldDialogue;
     const all=tower2OldQuestionBank.slice();
@@ -8171,6 +8252,12 @@ function updateLevel() {
       }
       return;
     }
+    if(d.phase==="quiz"){
+      if(!tower2OldTextComplete())return;
+      const answer=['KeyA','KeyB','KeyC'].findIndex(k=>input.wasPressed(k));
+      if(answer>=0){d.selected=tower2OldKeys[answer];d.selectedAt=now;d.phase='quizConfirm';audio.playSfx('sfx_menu',.72);}
+      return;
+    }
     const e=input.wasPressed("KeyE"), f=input.wasPressed("KeyF"), space=input.wasPressed("Space");
     if(!e&&!f&&!space)return;
     // E durante la digitazione completa la pagina; la pressione successiva avanza.
@@ -8183,15 +8270,6 @@ function updateLevel() {
     if(d.phase==="choice"){
       if(e||f){
         d.selected=e?"yes":"no";d.selectedAt=now;d.phase="confirm";
-        if(audio&&audio.playSfx)audio.playSfx("sfx_menu",.72);
-      }
-      return;
-    }
-    if(d.phase==="quiz"){
-      if(e||f||space){
-        d.selected=e?"E":f?"F":"SPAZIO";
-        d.selectedAt=now;
-        d.phase="quizConfirm";
         if(audio&&audio.playSfx)audio.playSfx("sfx_menu",.72);
       }
       return;
@@ -8268,7 +8346,7 @@ function updateLevel() {
           ctx.fillRect(qx+10,yy-14,qw-20,28);
         }
         ctx.fillStyle=blink?"#ffe75a":"#fff";
-        const answer=key+" = "+label;
+        const answer=key+": "+label;
         const maxW=qw-40;
         ctx.fillText(answer,qx+20,yy,maxW);
       });
@@ -8817,11 +8895,11 @@ function drawLevelRaw() {
     ctx.textBaseline = "middle";
     ctx.font = `900 ${Math.max(15, Math.floor(17 * s))}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
 
-    const cmds1 = "COMANDI: ← → = muovi   •   SPAZIO = salta";
-    const cmds2 = "F = entra/esci   •   E = interagisci   •   P = pausa   •   R = reset";
+    const cmds1 = "COMANDI: ← → = muovi   •   ↑ = salta";
+    const cmds2 = "F = entra/esci   •   E = interagisci";
 
     ctx.fillText(cmds1, cmdX + cmdW/2, cmdY + cmdH * 0.42);
-    ctx.fillText(cmds2, cmdX + cmdW/2, cmdY + cmdH * 0.62);
+    drawMobileCommandLine(cmds2,cmdX+cmdW/2,cmdY+cmdH*.62);
 
     ctx.restore();
 
@@ -9792,11 +9870,6 @@ const statsText = "Score: " + punteggio +
     ctx.fillText(meta.title,cx,GAME_H*.72);
     ctx.font="600 19px system-ui,Arial";
     drawWrappedCenteredText(meta.description,cx,GAME_H*.775,Math.min(790,GAME_W-90),25);
-    ctx.fillStyle="#ffdf76";ctx.font="900 19px system-ui,Arial";
-    const completed=fourTools.every(tool=>tool.collected);
-    ctx.fillText(completed?"+500 PUNTI  •  COLLEZIONE COMPLETA: +1000 BONUS!":"+500 PUNTI",cx,GAME_H*.865);
-    ctx.fillStyle="rgba(255,255,255,.78)";ctx.font="700 14px system-ui,Arial";
-    ctx.fillText("PREMI E, SPAZIO O INVIO PER CONTINUARE",cx,GAME_H*.945);
     ctx.restore();
   }
   function fourToolPosition(item){
@@ -10127,17 +10200,24 @@ const statsText = "Score: " + punteggio +
   }
 
 function tick() {
+    updateQuizControls();
     updateMobileUiState();
     const frameClockNow = performance.now();
     frameDeltaSec = Math.max(0, Math.min(0.10, (frameClockNow - lastFrameClockMs) / 1000));
     lastFrameClockMs = frameClockNow;
 
+    // RESET is handled before every paused/dialogue early return.
+    if(!resetConfirm.active&&input.wasPressed("KeyR")&&!leaderboardOpen)openResetConfirm();
+    if(resetConfirm.active){
+      if(input.wasPressed('Escape'))closeResetConfirm(false);
+      input.endFrame();requestAnimationFrame(tick);return;
+    }
     // Schermata di ritrovamento: timer, mondo e animazioni di gioco congelati.
     // Usa lo snapshot catturato dopo il frame in cui l'oggetto è stato raccolto.
     if(fourToolPickup.active&&fourToolPickup.snapshotReady){
       drawFourToolPickup();
       if(performance.now()-fourToolPickup.start>450 &&
-         (input.wasPressed("KeyE")||input.wasPressed("Space")||input.wasPressed("Enter"))){
+         mobileDismissKey()){
         fourToolPickup.active=false;
         fourToolPickup.item=null;
         fourToolPickup.snapshotReady=false;
@@ -10236,7 +10316,7 @@ function tick() {
       drawSmartgasInterior();
       bossDialogue.characters=Math.min(bossDialogue.message.length,bossDialogue.characters+0.65);
       drawBossDialogue();
-      if(input.wasPressed("KeyE")){
+      if(mobileDismissKey()){
         bossDialogue.active=false;
         game.vanUnlocked=true;
         p.vx=0;p.vy=0;
@@ -10245,10 +10325,7 @@ function tick() {
       requestAnimationFrame(tick);
       return;
     }
-    if (input.wasPressed("KeyR")) {
-      audio.playSfx("sfx_menu", 0.7);
-      resetGame();
-    }
+
 
     // SOLO TEST: T sottrae un minuto dal timer per provare lancetta e ultimo minuto.
     if (input.wasPressed("KeyT") && game.timerStarted && game.running && game.timeLeft > 0) {

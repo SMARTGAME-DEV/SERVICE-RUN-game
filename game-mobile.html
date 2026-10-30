@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.37" />
+  <meta name="service-run-mobile-version" content="1.38" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -17,7 +17,7 @@ b{font-weight:800}
 /* SMARTGASmed responsive touch pad, desktop unchanged */
 #touchControls,#rotateHint{display:none}
 @media (pointer:coarse) and (max-width:1100px){
- html,body{overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto;flex:none;max-width:none;max-height:none}
+ html,body{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}#wrap{height:100dvh}#game{padding:0;min-height:0;display:flex;align-items:center;justify-content:center}canvas{border:0;border-radius:0;box-shadow:none;touch-action:none;display:block;margin:auto;flex:none;max-width:none;max-height:none}
  #touchControls{display:block;position:fixed;inset:0;z-index:40;pointer-events:none;user-select:none;-webkit-user-select:none}
  .touchCross{position:absolute;bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:6px;pointer-events:none;--btn:clamp(44px,min(8vw,16vh),66px)}
  .touchCross.left{left:max(32px,env(safe-area-inset-left));--btn:clamp(56px,min(10vw,20vh),82px)}.touchCross.right{right:max(10px,env(safe-area-inset-right))}
@@ -36,8 +36,8 @@ b{font-weight:800}
  #rotateHint{display:none}
  #mobileNameHelp{display:none}
  body.mobile-keyboard #touchControls, body.mobile-keyboard #mobileEnterWrap{display:none!important}
- body.mobile-keyboard #game{opacity:.7}
- body.mobile-keyboard #mobileNameHelp{display:block;position:fixed;left:0;right:0;bottom:0;z-index:1001;text-align:center;padding:7px;background:#11302a;color:#fff;font:14px system-ui}
+ body.mobile-keyboard #game{opacity:1}
+ body.mobile-keyboard #mobileNameHelp{display:none}
 }
 @media (pointer:coarse) and (max-width:1100px) and (orientation:portrait){#rotateHint{display:flex;position:fixed;inset:0;z-index:60;background:#071720f5;color:white;align-items:center;justify-content:center;text-align:center;font:bold 22px system-ui;padding:25px;pointer-events:none}}
 
@@ -92,18 +92,42 @@ b{font-weight:800}
   // Conserva le proporzioni senza deformazioni; nessun reset del canvas al resize.
   function fitCanvas() {
     const mobile = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
-    const availableW = Math.max(1, window.innerWidth - (mobile ? 0 : 24));
-    const availableH = Math.max(1, window.innerHeight - (mobile ? 0 : 24));
+    const viewport=window.visualViewport;
+    const availableW = Math.max(1, (mobile&&viewport?viewport.width:window.innerWidth) - (mobile ? 0 : 24));
+    const availableH = Math.max(1, (mobile&&viewport?viewport.height:window.innerHeight) - (mobile ? 0 : 24));
+    if(mobile){document.getElementById("wrap").style.height=availableH+"px";}
     // Niente zoom/crop: adatta entrambi gli assi con lo stesso fattore.
     // Il bordo libero residuo dipende dalle proporzioni fisiche del display.
     const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5);
     // Mantiene sempre le proporzioni native 1194:672. Mai stretching.
     canvas.style.width = Math.floor(GAME_W * scale) + "px";
     canvas.style.height = Math.floor(GAME_H * scale) + "px";
+    const nameField=document.getElementById('leaderboardNameField');
+    if(nameField&&nameField.style.display!=='none'){
+      const r=canvas.getBoundingClientRect();nameField.style.left=(r.left+r.width/2)+'px';nameField.style.top=(r.top+r.height*.55)+'px';
+      nameField.style.height=Math.max(28,Math.min(43,r.height*.12))+'px';
+    }
   }
   window.addEventListener("resize", fitCanvas);
   window.addEventListener("orientationchange",()=>setTimeout(fitCanvas,180));
   fitCanvas();
+  const editable=e=>!!e.target.closest?.('input,textarea,[contenteditable="true"]');
+  document.addEventListener('touchmove',e=>{if(isMobileTouchBuild()&&!editable(e))e.preventDefault();},{passive:false});
+  document.addEventListener('touchend',e=>{if(isMobileTouchBuild()&&!editable(e)&&!e.target.closest?.('button,a'))e.preventDefault();},{passive:false});
+  document.addEventListener('dblclick',e=>{if(isMobileTouchBuild()&&!editable(e))e.preventDefault();},{passive:false});
+  document.addEventListener('gesturestart',e=>{if(isMobileTouchBuild()&&!editable(e))e.preventDefault();},{passive:false});
+  let viewportRepairPending=false;
+  function repairMobileViewport(){
+    if(viewportRepairPending)return;viewportRepairPending=true;
+    requestAnimationFrame(()=>{viewportRepairPending=false;if(!isMobileTouchBuild())return;
+      if(!document.activeElement?.matches('input,textarea'))window.scrollTo(0,0);
+      fitCanvas();
+    });
+  }
+  window.visualViewport?.addEventListener('resize',repairMobileViewport);
+  window.visualViewport?.addEventListener('scroll',repairMobileViewport);
+  window.addEventListener('scroll',repairMobileViewport,{passive:true});
+  document.addEventListener('focusout',()=>{setTimeout(repairMobileViewport,100);setTimeout(repairMobileViewport,350);});
 
   const W = () => GAME_W;
   const H = () => GAME_H;
@@ -284,7 +308,7 @@ function syncPlayerSizeFromSprite(img){
   function updateMobileUiState(){
     if(!isMobileTouchBuild()) return;
     const name = scene.name;
-    const enterOnly = name === 'NOTICE' || name === 'START' || name === 'PLAYER_SELECT' ||
+    const enterOnly = name === 'WIN' || name === 'LOSE' || name === 'NOTICE' || name === 'START' || name === 'PLAYER_SELECT' ||
       name === 'INTRO' || (name === 'LEVEL' && showInfoOverlay);
     const uiState = name + ':' + enterOnly;
     if(uiState === lastMobileScene) return;
@@ -7624,7 +7648,7 @@ function updateLevel() {
          landing.id===tower2PlatformOrder[tower2PlatformStage]){
         tower2PlatformStage++;
         tower2PlatformFlashId=landing.id;
-        tower2PlatformFlashUntil=t+60;
+        tower2PlatformFlashUntil=t+12;
       }
     }
   }
@@ -8966,6 +8990,51 @@ function drawLevelRaw() {
     ctx.restore();
   }
 
+  let endTouchPressed='',endTouchPointer=null;
+  function endTouchButtons(){
+    if(resetConfirm.active)return [];
+    if(!leaderboardOpen)return [{id:'retry',x:W()/2-250,y:H()-158,w:500,h:64},{id:'ranking',x:W()/2-250,y:H()-76,w:500,h:64}];
+    const buttons=[{id:'exit',x:24,y:280,w:90,h:90,label:'↶',title:'EXIT'}];
+    if(leaderboardMode==='PROMPT')buttons.push({id:'yes',x:W()/2-130,y:344,w:100,h:100,label:'SÌ'},{id:'no',x:W()/2+30,y:344,w:100,h:100,label:'NO'});
+    if(leaderboardMode==='NAME')buttons.push({id:'save',x:W()/2-160,y:447,w:320,h:56,label:'SALVA RISULTATO'});
+    if(leaderboardMode==='LIST')buttons.push({id:'up',x:W()-114,y:255,w:90,h:90,label:'↑'},{id:'down',x:W()-114,y:365,w:90,h:90,label:'↓'});
+    return buttons;
+  }
+  const endSpriteCuts={"premi_R_per_riprovare_ok": [0.09309895833333333, 0.3759765625, 0.90625, 0.5869140625, 0.38, 0.43], "premi_f_per_la_classifica_ok": [0.020124580737901295, 0.26294820717131473, 0.9803545759463345, 0.7237715803452855, 0.31, 0.375]};
+  function drawEndSprite(id,b){
+    const key=id==='retry'?'premi_R_per_riprovare_ok':'premi_f_per_la_classifica_ok',img=IMAGES[key],cut=endSpriteCuts[key];
+    if(!img?.naturalWidth)return;
+    const iw=img.naturalWidth,ih=img.naturalHeight,[x,y,r,bt,c1,c2]=cut;
+    const sourceW=(r-x-c2+c1)*iw,sourceH=(bt-y)*ih,scale=Math.min(b.w/sourceW,b.h/sourceH);
+    const dx=b.x+(b.w-sourceW*scale)/2,dy=b.y+(b.h-sourceH*scale)/2,leftW=(c1-x)*iw;
+    ctx.drawImage(img,x*iw,y*ih,leftW,sourceH,dx,dy,leftW*scale,sourceH*scale);
+    ctx.drawImage(img,c2*iw,y*ih,(r-c2)*iw,sourceH,dx+leftW*scale,dy,(r-c2)*iw*scale,sourceH*scale);
+  }
+  function drawEndTouchButtons(){
+    ctx.save();
+    for(const b of endTouchButtons()){
+      const pressed=endTouchPressed===b.id;
+      if(b.id==='retry'||b.id==='ranking')drawEndSprite(b.id,b);
+      else{
+        ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,12);ctx.fillStyle=pressed?'#287d46':'#081710';ctx.fill();ctx.strokeStyle=pressed?'#fff':'#70e599';ctx.lineWidth=3;ctx.stroke();
+        uiText(b.label,b.x+b.w/2,b.y+b.h/2+9,b.id==='save'?23:38,'#fff','center',true);
+        if(b.title)uiText(b.title,b.x+b.w/2,b.y-12,22,'#fff','center',true);
+      }
+      if(pressed){ctx.fillStyle='rgba(150,255,180,.25)';ctx.fillRect(b.x,b.y,b.w,b.h);}
+    }ctx.restore();
+  }
+  function endTouchAction(id){
+    if(id==='retry')openResetConfirm();
+    if(id==='ranking')lbOpen();
+    if(id==='exit')lbClose();
+    if(id==='yes'){leaderboardMode='NAME';showLeaderboardNameInput();}
+    if(id==='no')leaderboardMode='LIST';
+    if(id==='save')lbSave();
+    if(id==='up')lbMove(-1);
+    if(id==='down')lbMove(1);
+    input.pressed.clear();
+  }
+
   function drawWin() {
     ctx.fillStyle="#0b1020"; fillRect(0,0,W(),H());
     const img = IMAGES["box_vittoria_ok"];
@@ -9022,25 +9091,7 @@ function drawLevelRaw() {
       ctx.drawImage(stampImg, -width/2, -height/2, width, height);
       ctx.restore();
     }
-    // Sprite rigioca: battito lento e discreto, centrato nella posizione della vecchia scritta.
-    const replaySprite = IMAGES["premi_r_per_rigiocare_ok"];
-    const replayPulse = 1 + 0.045 * Math.sin(performance.now() * 2 * Math.PI / 3600);
-    // Entrambi i comandi hanno esattamente la stessa larghezza visiva e lo stesso battito.
-    const replayBaseWidth = (replaySprite && replaySprite.naturalWidth && replaySprite.naturalHeight)
-      ? 3.9 * Math.min(310, 34 * replaySprite.naturalWidth / replaySprite.naturalHeight) : 370;
-    const replayDrawWidth = replayBaseWidth * replayPulse;
-    if (replaySprite && replaySprite.naturalWidth && replaySprite.naturalHeight) {
-      const sh = replayDrawWidth * replaySprite.naturalHeight / replaySprite.naturalWidth;
-      ctx.drawImage(replaySprite, (W()-replayDrawWidth)/2, H()-126-sh/2, replayDrawWidth, sh);
-    }
-    // Secondo comando, sotto PREMI R: stessa larghezza, senza deformare lo sprite.
-    const rankingSprite = IMAGES["premi_f_per_la_classifica_ok"];
-    if(rankingSprite && rankingSprite.naturalWidth && rankingSprite.naturalHeight){
-      const rw=replayDrawWidth, rh=rw*rankingSprite.naturalHeight/rankingSprite.naturalWidth;
-      ctx.drawImage(rankingSprite,W()/2-rw/2,H()-43-rh/2,rw,rh);
-    }else{
-      uiText("PREMI F PER LA CLASSIFICA",W()/2,H()-40,21,"#ffdf43","center",true);
-    }
+    if(!leaderboardOpen)drawEndTouchButtons();
     drawWinConfetti();
   }
 
@@ -9074,6 +9125,7 @@ function drawLevelRaw() {
   let leaderboardRemote=lbSort(lbRead(LB_CACHE_KEY));
   let leaderboardLocal=lbSort(lbRead(LB_STORAGE_KEY));
   const leaderboardNameInput=document.createElement("input");
+  leaderboardNameInput.id="leaderboardNameField";
   leaderboardNameInput.type="text";
   leaderboardNameInput.maxLength=10;
   leaderboardNameInput.autocomplete="off";
@@ -9099,7 +9151,7 @@ function drawLevelRaw() {
     leaderboardNameInput.style.display="block";
     if(matchMedia("(pointer:coarse)").matches)document.body.classList.add("mobile-keyboard");
     input.down.clear();input.pressed.clear();
-    leaderboardNameInput.focus();
+    fitCanvas();leaderboardNameInput.focus({preventScroll:true});
   }
   function lbEntries(){
     // Una sola graduatoria: record Supabase + partite offline ancora in coda.
@@ -9269,28 +9321,19 @@ function drawLevelRaw() {
       if(input.wasPressed("PageUp")){leaderboardPage=Math.max(0,leaderboardPage-1);leaderboardSelected=0;}
     }
   }
-  // Touch/mouse: consente di usare la classifica anche da telefono.
-  canvas.addEventListener("pointerdown",e=>{
-    if(scene.name!=="WIN"&&scene.name!=="LOSE")return;
+  canvas.addEventListener('pointerdown',e=>{
+    if(!['WIN','LOSE'].includes(scene.name)||resetConfirm.active)return;
     const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*W()/r.width,y=(e.clientY-r.top)*H()/r.height;
-    if(!leaderboardOpen){
-      if(x>W()/2-220&&x<W()/2+220){
-        if(y>=595)lbOpen();
-        else if(y>510){audio.playSfx("sfx_menu",0.7);resetGame();}
-      }
-      return;
-    }
-    if(y>590&&leaderboardMode!=="NAME"){lbClose();return;}
-    if(leaderboardMode==="PROMPT"){
-      if(y>317&&y<414){leaderboardChoice=y<369?0:1; if(leaderboardChoice===0){leaderboardMode="NAME";showLeaderboardNameInput();}else leaderboardMode="LIST";}
-    }else if(leaderboardMode==="NAME"){
-      if(y>445&&y<510&&x>W()/2-170&&x<W()/2+170)lbSave();
-      else leaderboardNameInput.focus();
-    }else if(leaderboardMode==="LIST"){
-      if(y>510&&y<585){if(x<W()/2)lbMove(-1);else lbMove(1);}
-      else if(y>205&&y<505){leaderboardSelected=Math.max(0,Math.min(9,Math.floor((y-223)/27.5)));}
-    }
+    const b=endTouchButtons().find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
+    if(!b)return;e.preventDefault();endTouchPressed=b.id;endTouchPointer=e.pointerId;canvas.setPointerCapture(e.pointerId);
   });
+  canvas.addEventListener('pointerup',e=>{
+    if(e.pointerId!==endTouchPointer)return;
+    const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*W()/r.width,y=(e.clientY-r.top)*H()/r.height;
+    const b=endTouchButtons().find(b=>b.id===endTouchPressed&&x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
+    endTouchPressed='';endTouchPointer=null;if(b)endTouchAction(b.id);
+  });
+  for(const type of ['pointercancel','lostpointercapture'])canvas.addEventListener(type,()=>{endTouchPressed='';endTouchPointer=null;});
   function drawLeaderboard(){
     ctx.save();
     ctx.fillStyle="rgba(0,0,0,.85)";ctx.fillRect(0,0,W(),H());
@@ -9322,31 +9365,23 @@ function drawLevelRaw() {
       uiText(item?item.name:"---",393,y,19,highlight?"#087f26":item?"#202e24":"#a5aaa5","left",true,false);
       uiText(item?item.score.toLocaleString("it-IT"):"0",891,y,19,highlight?"#087f26":item?"#202e24":"#a5aaa5","right",true,false);
     }
-    uiText((start+1)+" - "+Math.min(LB_CAPACITY,start+10)+" / "+LB_CAPACITY,W()/2,552,18,"#1d4929","center",true,false);
-    uiText("↑ ↓ SCORRI DI 10 POSIZIONI",W()/2,582,16,"#ffeb70","center",true,true);
-    uiText(leaderboardMode==="NAME"?"SCRIVI IL NOME E PREMI INVIO":(scene.name==="LOSE"?"F / ESC TORNA ALLA SCONFITTA":"F / ESC TORNA ALLA VITTORIA"),W()/2,610,18,"#ffffff","center",true,true);
-    uiText(leaderboardStatus,W()/2,634,14,"#aaf0a5","center",true,true);
+    uiText("PAGINA "+(leaderboardPage+1)+" / "+Math.ceil(LB_CAPACITY/10),W()/2,552,18,"#1d4929","center",true,false);
     if(leaderboardMode!=="LIST"){
       ctx.fillStyle="rgba(0,0,0,.79)";ctx.fillRect(249,216,696,322);
       ctx.strokeStyle="#d5b438";ctx.lineWidth=3;ctx.strokeRect(272,231,650,284);
       if(leaderboardMode==="PROMPT"){
-        uiText("VUOI REGISTRARE IL TUO RISULTATO?",W()/2,272,23,"#ffe35a","center",true);
-        uiText(lbCurrentScore().toLocaleString("it-IT")+" PT",W()/2,305,26,"#ffffff","center",true);
-        for(let i=0;i<2;i++){
-          const y=345+i*46,selected=i===leaderboardChoice;
-          if(selected){ctx.fillStyle="rgba(231,191,45,.3)";ctx.fillRect(W()/2-103,y-28,206,38);}
-          uiText((selected?"▶  ":"    ")+(i===0?"SÌ":"NO"),W()/2,y,25,selected?"#ffe34d":"#ffffff","center",true);
-        }
-        uiText("↑ ↓ SCEGLI   •   E CONFERMA",W()/2,476,17,"#e7e7e7","center",true);
+        uiText("VUOI REGISTRARE IL TUO RISULTATO?",W()/2,305,23,"#ffe35a","center",true);
+        uiText(lbCurrentScore().toLocaleString("it-IT")+" PT",W()/2,272,26,"#ffffff","center",true);
       }else{
         uiText("INSERISCI IL TUO NOME",W()/2,284,26,"#ffe35a","center",true);
         uiText("MASSIMO 10 CARATTERI",W()/2,320,17,"#ffffff","center",true);
-        uiText("CONFERMA CON INVIO",W()/2,423,20,"#ffffff","center",true);
-        ctx.fillStyle="rgba(20,140,50,.6)";ctx.fillRect(W()/2-126,447,252,47);
-        uiText("SALVA RISULTATO",W()/2,477,20,"#ffffff","center",true);
+
+
+
         if(leaderboardStatus==="INSERISCI UN NOME")uiText(leaderboardStatus,W()/2,512,17,"#ffb3b3","center",true);
       }
     }
+    drawEndTouchButtons();
     ctx.restore();
   }
 
@@ -9426,31 +9461,7 @@ const statsText = "Score: " + punteggio +
     // Fascia bassa del box (testo bianco)
     ctx.fillText(statsText, W()/2, H() - 185);
 
-    // Comandi come in vittoria: R per riprovare, F per la TOP 100.
-    const retryImg=IMAGES["premi_R_per_riprovare_ok"];
-    const pulse=1+0.045*Math.sin(performance.now()*2*Math.PI/3600);
-    // Stessa larghezza della schermata VITTORIA, indipendentemente
-    // dalle proporzioni native dello sprite "RIPROVARE" della sconfitta.
-    const victoryReplayImg=IMAGES["premi_r_per_rigiocare_ok"];
-    const baseWidth=(victoryReplayImg&&victoryReplayImg.naturalWidth&&victoryReplayImg.naturalHeight)
-      ? 3.9*Math.min(310,34*victoryReplayImg.naturalWidth/victoryReplayImg.naturalHeight):370;
-    const drawWidth=baseWidth*pulse;
-    if(retryImg&&retryImg.naturalWidth&&retryImg.naturalHeight){
-      // Lo sprite "RIPROVARE" ha più margine visivo del "RIGIOCARE" della vittoria:
-      // corregge solo il suo ingrandimento, senza deformarlo.
-      const retryVisibleWidth=drawWidth*1.15;
-      const rh=retryVisibleWidth*retryImg.naturalHeight/retryImg.naturalWidth;
-      ctx.drawImage(retryImg,(W()-retryVisibleWidth)/2,H()-126-rh/2,retryVisibleWidth,rh);
-    }else{
-      uiText("PREMI R PER RIPROVARE",W()/2,H()-126,21,"#ffdf43","center",true);
-    }
-    const rankingImg=IMAGES["premi_f_per_la_classifica_ok"];
-    if(rankingImg&&rankingImg.naturalWidth&&rankingImg.naturalHeight){
-      const rh=drawWidth*rankingImg.naturalHeight/rankingImg.naturalWidth;
-      ctx.drawImage(rankingImg,W()/2-drawWidth/2,H()-43-rh/2,drawWidth,rh);
-    }else{
-      uiText("PREMI F PER LA CLASSIFICA",W()/2,H()-43,21,"#ffdf43","center",true);
-    }
+    if(!leaderboardOpen)drawEndTouchButtons();
 }
 
 

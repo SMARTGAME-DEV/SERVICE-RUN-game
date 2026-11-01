@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.38" />
+  <meta name="service-run-mobile-version" content="1.39" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -90,12 +90,17 @@ b{font-weight:800}
 
   // Ridimensiona soltanto la PRESENTAZIONE, mai la superficie logica.
   // Conserva le proporzioni senza deformazioni; nessun reset del canvas al resize.
+  let nameKeyboardViewport=null;
   function fitCanvas() {
     const mobile = matchMedia("(pointer:coarse) and (max-width:1100px)").matches;
     const viewport=window.visualViewport;
-    const availableW = Math.max(1, (mobile&&viewport?viewport.width:window.innerWidth) - (mobile ? 0 : 24));
-    const availableH = Math.max(1, (mobile&&viewport?viewport.height:window.innerHeight) - (mobile ? 0 : 24));
-    if(mobile){document.getElementById("wrap").style.height=availableH+"px";}
+    const availableW = nameKeyboardViewport?.width ?? Math.max(1, window.innerWidth - (mobile ? 0 : 24));
+    const availableH = nameKeyboardViewport?.height ?? Math.max(1, window.innerHeight - (mobile ? 0 : 24));
+    if(mobile){
+      const wrap=document.getElementById('wrap');wrap.style.width=availableW+'px';wrap.style.height=availableH+'px';
+      // Keep the full-size game under the keyboard, compensating iOS viewport panning.
+      wrap.style.transform=nameKeyboardViewport?`translate(${viewport?.offsetLeft||0}px,${viewport?.offsetTop||0}px)`:'';
+    }
     // Niente zoom/crop: adatta entrambi gli assi con lo stesso fattore.
     // Il bordo libero residuo dipende dalle proporzioni fisiche del display.
     const scale = Math.min(availableW / GAME_W, availableH / GAME_H, mobile ? 10 : 1.5);
@@ -104,7 +109,7 @@ b{font-weight:800}
     canvas.style.height = Math.floor(GAME_H * scale) + "px";
     const nameField=document.getElementById('leaderboardNameField');
     if(nameField&&nameField.style.display!=='none'){
-      const r=canvas.getBoundingClientRect();nameField.style.left=(r.left+r.width/2)+'px';nameField.style.top=(r.top+r.height*.55)+'px';
+      const r=canvas.getBoundingClientRect();nameField.style.left=(r.left+r.width/2)+'px';nameField.style.top=(nameKeyboardViewport&&viewport?Math.min(r.top+r.height*.55,viewport.offsetTop+viewport.height-32):r.top+r.height*.55)+'px';
       nameField.style.height=Math.max(28,Math.min(43,r.height*.12))+'px';
     }
   }
@@ -4899,8 +4904,9 @@ function drawInteriorHUD() {
   const t = (game.timeLeft != null) ? Math.ceil(game.timeLeft) : 0;
   const timerStr = formatTimeMMSS(t);
 
-  // Testo sopra barra: allineamenti "a occhio" sui tre blocchi
+  // Explicit alignment prevents inherited canvas text state shifting the timer.
   ctx.save();
+  ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   // Manutenzioni (sinistra) — solo conteggio
   ctx.fillStyle = "#000000";
@@ -8994,7 +9000,7 @@ function drawLevelRaw() {
   function endTouchButtons(){
     if(resetConfirm.active)return [];
     if(!leaderboardOpen)return [{id:'retry',x:W()/2-250,y:H()-158,w:500,h:64},{id:'ranking',x:W()/2-250,y:H()-76,w:500,h:64}];
-    const buttons=[{id:'exit',x:24,y:280,w:90,h:90,label:'↶',title:'EXIT'}];
+    const buttons=[{id:'exit',x:24,y:280,w:90,h:90,label:'←',title:'EXIT'}];
     if(leaderboardMode==='PROMPT')buttons.push({id:'yes',x:W()/2-130,y:344,w:100,h:100,label:'SÌ'},{id:'no',x:W()/2+30,y:344,w:100,h:100,label:'NO'});
     if(leaderboardMode==='NAME')buttons.push({id:'save',x:W()/2-160,y:447,w:320,h:56,label:'SALVA RISULTATO'});
     if(leaderboardMode==='LIST')buttons.push({id:'up',x:W()-114,y:255,w:90,h:90,label:'↑'},{id:'down',x:W()-114,y:365,w:90,h:90,label:'↓'});
@@ -9014,13 +9020,17 @@ function drawLevelRaw() {
     ctx.save();
     for(const b of endTouchButtons()){
       const pressed=endTouchPressed===b.id;
-      if(b.id==='retry'||b.id==='ranking')drawEndSprite(b.id,b);
+      if(b.id==='retry'||b.id==='ranking'){
+        ctx.save();
+        if(pressed){ctx.translate(b.x+b.w/2,b.y+b.h/2+3);ctx.scale(.96,.96);ctx.translate(-b.x-b.w/2,-b.y-b.h/2);}
+        drawEndSprite(b.id,b);ctx.restore();
+      }
       else{
         ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,12);ctx.fillStyle=pressed?'#287d46':'#081710';ctx.fill();ctx.strokeStyle=pressed?'#fff':'#70e599';ctx.lineWidth=3;ctx.stroke();
         uiText(b.label,b.x+b.w/2,b.y+b.h/2+9,b.id==='save'?23:38,'#fff','center',true);
         if(b.title)uiText(b.title,b.x+b.w/2,b.y-12,22,'#fff','center',true);
       }
-      if(pressed){ctx.fillStyle='rgba(150,255,180,.25)';ctx.fillRect(b.x,b.y,b.w,b.h);}
+      if(pressed&&b.id!=='retry'&&b.id!=='ranking'){ctx.fillStyle='rgba(150,255,180,.25)';ctx.fillRect(b.x,b.y,b.w,b.h);}
     }ctx.restore();
   }
   function endTouchAction(id){
@@ -9145,8 +9155,13 @@ function drawLevelRaw() {
     const cleaned=leaderboardNameInput.value.replace(/[^a-zA-Z0-9À-ÿ _.-]/g,"").slice(0,10);
     if(cleaned!==leaderboardNameInput.value)leaderboardNameInput.value=cleaned;
   });
-  function hideLeaderboardNameInput(){document.body.classList.remove("mobile-keyboard");leaderboardNameInput.style.display="none";leaderboardNameInput.blur();}
+  function hideLeaderboardNameInput(){
+    document.body.classList.remove('mobile-keyboard');leaderboardNameInput.style.display='none';leaderboardNameInput.blur();
+    // Keep dimensions until the keyboard closing animation has finished.
+    setTimeout(()=>{if(leaderboardNameInput.style.display==='none'){nameKeyboardViewport=null;repairMobileViewport();}},350);
+  }
   function showLeaderboardNameInput(){
+    if(isMobileTouchBuild()&&!nameKeyboardViewport)nameKeyboardViewport={width:window.innerWidth,height:window.innerHeight};
     leaderboardNameInput.value="";
     leaderboardNameInput.style.display="block";
     if(matchMedia("(pointer:coarse)").matches)document.body.classList.add("mobile-keyboard");

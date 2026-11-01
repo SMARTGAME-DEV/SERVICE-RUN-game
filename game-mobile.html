@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.39" />
+  <meta name="service-run-mobile-version" content="1.40" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -439,6 +439,9 @@ function syncPlayerSizeFromSprite(img){
   "letter_R": "assets/images/lettera R ok.png",
   "letter_T": "assets/images/lettera T ok.png",
   "letter_G": "assets/images/lettera G ok.png",
+  "leaderboard_exit": "assets/images/Pulsante_EXIT.png",
+  "leaderboard_up": "assets/images/sprite_freccia_su.png",
+  "leaderboard_down": "assets/images/sprite_freccia_giu.png",
   "barra_gioco_ok": "assets/images/barra-gioco-ok.png",
   "orologio_hud": "assets/images/orologio hud.png",
   "pausa_ok": "assets/images/pausa ok.png",
@@ -9016,6 +9019,7 @@ function drawLevelRaw() {
     ctx.drawImage(img,x*iw,y*ih,leftW,sourceH,dx,dy,leftW*scale,sourceH*scale);
     ctx.drawImage(img,c2*iw,y*ih,(r-c2)*iw,sourceH,dx+leftW*scale,dy,(r-c2)*iw*scale,sourceH*scale);
   }
+  const leaderboardButtonSprites={"exit": {"image": "leaderboard_exit", "crop": [82, 135, 1090, 1010]}, "up": {"image": "leaderboard_up", "crop": [50, 91, 791, 720]}, "down": {"image": "leaderboard_down", "crop": [46, 79, 791, 720]}};
   function drawEndTouchButtons(){
     ctx.save();
     for(const b of endTouchButtons()){
@@ -9025,12 +9029,20 @@ function drawLevelRaw() {
         if(pressed){ctx.translate(b.x+b.w/2,b.y+b.h/2+3);ctx.scale(.96,.96);ctx.translate(-b.x-b.w/2,-b.y-b.h/2);}
         drawEndSprite(b.id,b);ctx.restore();
       }
+      else if(leaderboardButtonSprites[b.id]){
+        const spec=leaderboardButtonSprites[b.id],img=IMAGES[spec.image];
+        if(img&&img.naturalWidth){
+          const [sx,sy,sw,sh]=spec.crop,scale=Math.min(b.w/sw,b.h/sh)*(pressed?.96:1);
+          const dw=sw*scale,dh=sh*scale;
+          ctx.drawImage(img,sx,sy,sw,sh,b.x+(b.w-dw)/2,b.y+(b.h-dh)/2+(pressed?3:0),dw,dh);
+        }
+      }
       else{
         ctx.beginPath();ctx.roundRect(b.x,b.y,b.w,b.h,12);ctx.fillStyle=pressed?'#287d46':'#081710';ctx.fill();ctx.strokeStyle=pressed?'#fff':'#70e599';ctx.lineWidth=3;ctx.stroke();
         uiText(b.label,b.x+b.w/2,b.y+b.h/2+9,b.id==='save'?23:38,'#fff','center',true);
         if(b.title)uiText(b.title,b.x+b.w/2,b.y-12,22,'#fff','center',true);
       }
-      if(pressed&&b.id!=='retry'&&b.id!=='ranking'){ctx.fillStyle='rgba(150,255,180,.25)';ctx.fillRect(b.x,b.y,b.w,b.h);}
+      if(pressed&&b.id!=='retry'&&b.id!=='ranking'&&!leaderboardButtonSprites[b.id]){ctx.fillStyle='rgba(150,255,180,.25)';ctx.fillRect(b.x,b.y,b.w,b.h);}
     }ctx.restore();
   }
   function endTouchAction(id){

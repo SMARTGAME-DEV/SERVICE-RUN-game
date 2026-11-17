@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#101820">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="service-run-mobile-version" content="1.43">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon-192.png">
@@ -43,14 +45,17 @@ const ua=navigator.userAgent;
 const ios=/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
 const android=/Android/.test(ua);
 const mobile=ios||android||matchMedia('(pointer:coarse) and (max-width:1100px)').matches;
-const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const standalone=()=>['standalone','minimal-ui','fullscreen'].some(mode=>matchMedia('(display-mode: '+mode+')').matches)||navigator.standalone===true;
+// Check specific browser tokens before Chrome/Safari, also present in other UAs.
+const browser=/SamsungBrowser\//i.test(ua)?'Samsung Internet':/EdgA?\/|EdgiOS\//i.test(ua)?'Edge':/OPR\/|OPiOS\//i.test(ua)?'Opera':/FxiOS\/|Firefox\//i.test(ua)?'Firefox':/CriOS\/|Chrome\//i.test(ua)?'Chrome':/Safari\//i.test(ua)?'Safari':'Browser';
+const device=ios?(/iPad|Macintosh/.test(ua)?'iPad':'iPhone'):android?'Android':'Dispositivo';
 const body=document.body;
  function syncRotateLoad(){const src=document.getElementById('stateBox'),dst=document.getElementById('rotateLoad');dst.hidden=src.hidden;document.getElementById('rotateState').textContent=document.getElementById('state').textContent;document.getElementById('rotateBar').value=document.getElementById('bar').value;document.getElementById('rotateDetail').textContent=document.getElementById('detail').textContent;}
  const rotateObserver=new MutationObserver(syncRotateLoad);rotateObserver.observe(document.getElementById('stateBox'),{subtree:true,childList:true,characterData:true,attributes:true});syncRotateLoad();
 if(mobile&&standalone())body.classList.add('standalone-mobile');
 $('subtitle').textContent=mobile?(standalone()?'SERVICE RUN · Preparazione del gioco':'SERVICE RUN · Installazione per smartphone'):'SERVICE RUN · Versione computer';
 $('footerNote').textContent=mobile?(standalone()?'Verifica delle risorse già scaricate. Il gioco si aprirà automaticamente al termine.':'Per giocare su smartphone devi installare l’app. Dopo il download completo puoi giocare anche offline; solo la classifica TOP 100 richiede Internet.'):'Puoi giocare direttamente dal computer. La classifica TOP 100 richiede Internet.';
-$('device').textContent=mobile?'VERSIONE SMARTPHONE':'VERSIONE COMPUTER';
+$('device').textContent=mobile?device+' · '+browser:'VERSIONE COMPUTER';
 $('play').href=mobile?'./game-mobile.html':'./game.html';
 let promptInstall=null,preparing=false,jobs=[],redirecting=false;
 function launchInstalledApp(){
@@ -60,7 +65,29 @@ function launchInstalledApp(){
 }
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptInstall=e});
 window.addEventListener('appinstalled',()=>{$('status').textContent='Installazione completata'});
-function guide(){const msg=ios?'Su iPhone: apri in Safari, tocca Condividi e seleziona “Aggiungi alla schermata Home”, poi “Apri come app web” se disponibile.':android?'Su Android: apri il menu del browser (⋮) e scegli “Installa app” o “Aggiungi a schermata Home”.':'Su computer: in Chrome o Edge usa il menu del browser e scegli “Installa app” (o l’icona di installazione nella barra degli indirizzi).';$('instructions').textContent=msg;$('guide').hidden=false;}
+function guide(){
+  let msg;
+  if(ios){
+    msg='Su '+device+' con '+browser+': tocca Condividi'+(browser==='Chrome'?' accanto alla barra degli indirizzi':'')+', poi “Aggiungi a schermata Home”. Se compare “Apri come app web”, lascialo attivo. Conferma con “Aggiungi”, quindi apri SERVICE RUN dalla nuova icona sulla Home.';
+  }else if(android&&browser==='Samsung Internet'){
+    msg='In Samsung Internet usa “Installa” qui sopra se viene proposta l’installazione, oppure l’icona di installazione dell’app nella barra degli indirizzi (può apparire come +). Conferma l’aggiunta alla schermata Home e apri la nuova icona. “Aggiungi pagina a” può creare soltanto un collegamento: se riapre una normale scheda con la barra del browser, l’app non è stata installata. Attendi che sia disponibile l’opzione di installazione dell’app in questa pagina.';
+  }else if(android&&browser==='Chrome'){
+    msg='In Chrome tocca il menu ⋮, poi “Aggiungi a schermata Home” → “Installa” oppure “Installa app”. Conferma l’installazione e apri SERVICE RUN dalla nuova icona. Se viene proposta la scelta, usa “Installa” e non “Crea scorciatoia”.';
+  }else if(android){
+    msg='In '+browser+' apri il menu e cerca “Installa app” oppure “Aggiungi a schermata Home”. Conferma l’installazione come app, se disponibile, e apri la nuova icona. Un semplice collegamento che riapre una scheda del browser non equivale all’app installata. Le voci disponibili dipendono dalla versione del browser.';
+  }else{
+    msg='Nel menu di '+browser+' cerca “Installa app”, oppure usa l’icona di installazione nella barra degli indirizzi, se disponibile.';
+  }
+  $('instructions').textContent=msg;$('guide').hidden=false;
+}
+function showInstallOnly(){
+  $('stateBox').hidden=true;
+  $('status').hidden=false;
+  showActions();
+  $('status').textContent='Installa l’app e aprila dalla sua icona. Il download dei pacchetti inizierà solo da lì.';
+  guide();
+}
+
 $('close').onclick=()=>{$('guide').hidden=true};
 $('install').onclick=async()=>{if(standalone()){$('status').textContent='App già installata e aperta.';return}if(promptInstall){const p=promptInstall;promptInstall=null;try{await p.prompt();await p.userChoice}catch(e){guide()}}else guide()};
 function showActions(){
@@ -113,6 +140,7 @@ async function cacheIsReady(list){
 }
 function fail(msg){preparing=false;$('stateBox').hidden=false;$('state').textContent='Download incompleto';$('status').hidden=false;$('status').textContent=msg;$('retry').hidden=false;$('bar').value=Math.min(99,$('bar').value);syncRotateLoad();}
 async function run(){
+  if(mobile&&!standalone()){showInstallOnly();return;}
   if(preparing)return;
   preparing=true;
   $('retry').hidden=true; $('actions').hidden=true; $('status').hidden=false; $('status').textContent=''; $('stateBox').hidden=false;
@@ -205,7 +233,18 @@ async function run(){
 }
 $('retry').onclick=run;
 if('serviceWorker' in navigator && location.protocol!=='file:'){navigator.serviceWorker.register('./service-worker.js').catch(()=>{})}
-run();
+if(mobile&&!standalone())showInstallOnly();
+else run();
+for(const mode of ['standalone','minimal-ui','fullscreen']){
+  const query=matchMedia('(display-mode: '+mode+')');
+  query.addEventListener?.('change',()=>{
+    if(mobile&&standalone()){
+      body.classList.add('standalone-mobile');
+      $('guide').hidden=true;
+      run();
+    }
+  });
+}
 })();
 </script>
 </body>

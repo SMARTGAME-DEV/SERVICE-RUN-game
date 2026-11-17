@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.41" />
+  <meta name="service-run-mobile-version" content="1.42" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -2575,15 +2575,15 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
       const size=Math.round(img.naturalHeight*PLAYER_SCALE*1.5);
       const top=feetY-size;
       // Small pointer above the head; crop only the transparent PNG margins.
-      const ah=Math.min(54,size*0.42),aw=ah*967/1298;
+      const ah=Math.min(62,size*0.48),aw=ah*967/1298;
       const bob=4*Math.sin(seconds*2*Math.PI/1.6);
       if(arrow && arrow.naturalWidth){
-        ctx.drawImage(arrow,78,48,967,1298,cx-aw/2,top-ah-8+bob,aw,ah);
+        ctx.drawImage(arrow,78,48,967,1298,cx-aw/2,top-ah-16+bob,aw,ah);
       }
       // Three expanding rings centred on the tappable character, fading outwards.
       for(let i=0;i<3;i++){
         const phase=(seconds/1.8+i/3)%1;
-        const radius=size*(0.10+0.24*phase);
+        const radius=size*(0.15+0.36*phase);
         ctx.globalAlpha=0.65*(1-phase);
         ctx.strokeStyle="#ffffff";
         ctx.lineWidth=2;

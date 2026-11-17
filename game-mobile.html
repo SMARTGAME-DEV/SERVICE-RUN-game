@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="service-run-mobile-version" content="1.40" />
+  <meta name="service-run-mobile-version" content="1.41" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <title>SMARTGASmed • Service RUN v2</title>
   <style>
@@ -439,6 +439,7 @@ function syncPlayerSizeFromSprite(img){
   "letter_R": "assets/images/lettera R ok.png",
   "letter_T": "assets/images/lettera T ok.png",
   "letter_G": "assets/images/lettera G ok.png",
+  "player_select_hint_arrow": "assets/images/Freccia_industriale_giu_ok.png",
   "leaderboard_exit": "assets/images/Pulsante_EXIT.png",
   "leaderboard_up": "assets/images/sprite_freccia_su.png",
   "leaderboard_down": "assets/images/sprite_freccia_giu.png",
@@ -2563,13 +2564,43 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     ctx.restore();
   }
 
+  function drawPlayerSelectHints(){
+    if(playerSelectChoice!==null || playerSelectConfirming) return;
+    const arrow=IMAGES["player_select_hint_arrow"];
+    const seconds=performance.now()/1000;
+    const feetY=H()*0.690-10;
+    ctx.save();
+    for(const [img,cx] of [[GIRL_IDLE,W()*0.198-13],[PLAYER_IDLE,W()*0.812]]){
+      if(!img || !img.naturalHeight) continue;
+      const size=Math.round(img.naturalHeight*PLAYER_SCALE*1.5);
+      const top=feetY-size;
+      // Small pointer above the head; crop only the transparent PNG margins.
+      const ah=Math.min(54,size*0.42),aw=ah*967/1298;
+      const bob=4*Math.sin(seconds*2*Math.PI/1.6);
+      if(arrow && arrow.naturalWidth){
+        ctx.drawImage(arrow,78,48,967,1298,cx-aw/2,top-ah-8+bob,aw,ah);
+      }
+      // Three expanding rings centred on the tappable character, fading outwards.
+      for(let i=0;i<3;i++){
+        const phase=(seconds/1.8+i/3)%1;
+        const radius=size*(0.10+0.24*phase);
+        ctx.globalAlpha=0.65*(1-phase);
+        ctx.strokeStyle="#ffffff";
+        ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(cx,top+size*0.49,radius,0,Math.PI*2);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+    ctx.restore();
+  }
+
   function drawPlayerSelectInstructions(){
     // Mostrato solo all'ingresso, quando entrambe le luci sono ancora spente.
     // Appena il giocatore tocca e sceglie un personaggio, scompare.
     if(playerSelectChoice!==null || playerSelectConfirming) return;
 
-    const boxW=Math.min(700,W()*0.58);
-    const boxH=112;
+    const boxW=Math.min(550,W()*0.46);
+    const boxH=92;
     const boxX=(W()-boxW)/2;
     const boxY=H()*0.445-boxH/2;
 
@@ -2582,15 +2613,15 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
 
     ctx.textAlign="center";
     ctx.textBaseline="middle";
-    ctx.font="900 24px Arial, sans-serif";
+    ctx.font="900 21px Arial, sans-serif";
     ctx.fillStyle="#ffffff";
     ctx.shadowColor="rgba(0,0,0,.9)";
     ctx.shadowBlur=4;
-    ctx.fillText("PREMI SUL PLAYER PER SELEZIONARLO",W()/2,boxY+38);
+    ctx.fillText("PREMI SUL PLAYER PER SELEZIONARLO",W()/2,boxY+30);
 
-    ctx.font="900 22px Arial, sans-serif";
+    ctx.font="900 20px Arial, sans-serif";
     ctx.fillStyle="#8dff9e";
-    ctx.fillText("PREMI INVIO PER CONFERMARE",W()/2,boxY+78);
+    ctx.fillText("PREMI INVIO PER CONFERMARE",W()/2,boxY+63);
     ctx.restore();
   }
 
@@ -2641,6 +2672,7 @@ let DEBUG_HITBOX = false;  // premere H per toggle (debug hitbox)
     drawPlayerSelectDescriptionBox();
 
     // Box istruzioni iniziale: sparisce quando viene scelto un personaggio.
+    drawPlayerSelectHints();
     drawPlayerSelectInstructions();
     drawPlayerSelectEnter();
   }
